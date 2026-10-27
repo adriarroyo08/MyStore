@@ -10,11 +10,19 @@ import kotlinx.coroutines.flow.update
 // Estado compartido entre Installer y el receiver (mismo proceso)
 internal val installStates = MutableStateFlow<Map<String, InstallState>>(emptyMap())
 
+// Sesión de PackageInstaller y diálogo de confirmación pendientes por app
+internal val sessionIds = java.util.concurrent.ConcurrentHashMap<String, Int>()
+internal val confirmIntents = java.util.concurrent.ConcurrentHashMap<String, Intent>()
+
 internal fun setInstallState(id: String, s: InstallState) = installStates.update { it + (id to s) }
 
 class InstallReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val id = intent.getStringExtra(EXTRA_APP_ID) ?: return
+        if (intent.getIntExtra(PackageInstaller.EXTRA_STATUS, -999) != PackageInstaller.STATUS_PENDING_USER_ACTION) {
+            sessionIds.remove(id)
+            confirmIntents.remove(id)
+        }
         when (val code = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, -999)) {
             PackageInstaller.STATUS_PENDING_USER_ACTION -> {
                 @Suppress("DEPRECATION")
@@ -22,6 +30,7 @@ class InstallReceiver : BroadcastReceiver() {
                 if (confirm == null) {
                     setInstallState(id, InstallState.Failed("El sistema no mostró el instalador"))
                 } else {
+                    confirmIntents[id] = Intent(confirm)
                     try {
                         context.startActivity(confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                     } catch (e: Exception) {

@@ -162,8 +162,8 @@ private fun DetailScreen(vm: StoreViewModel, app: StoreApp, onPermission: () -> 
             if (app.screenshots.isNotEmpty()) {
                 LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     itemsIndexed(app.screenshots) { i, url ->
-                        LaunchedEffect(url) { vm.loadShot(url) }
-                        val bmp = vm.shots[url]
+                        val bmp = vm.shot(url)
+                        LaunchedEffect(url, bmp == null) { vm.loadShot(url) }
                         val m = Modifier.height(200.dp).clip(RoundedCornerShape(12.dp)).clickable { viewer = i }
                         if (bmp != null) Image(bmp, null, m, contentScale = ContentScale.FillHeight)
                         else Box(m.width(112.dp).background(MaterialTheme.colorScheme.surfaceVariant))
@@ -191,8 +191,8 @@ private fun ShotViewer(vm: StoreViewModel, shots: List<String>, start: Int, onCl
     val pager = rememberPagerState(start) { shots.size }
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         HorizontalPager(pager, Modifier.fillMaxSize().systemBarsPadding()) { i ->
-            LaunchedEffect(shots[i]) { vm.loadShot(shots[i]) }
-            val bmp = vm.shots[shots[i]]
+            val bmp = vm.shot(shots[i])
+            LaunchedEffect(shots[i], bmp == null) { vm.loadShot(shots[i]) }
             Box(Modifier.fillMaxSize(), Alignment.Center) {
                 if (bmp != null) Image(bmp, null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
                 else CircularProgressIndicator()
@@ -251,7 +251,7 @@ private fun ActionButton(vm: StoreViewModel, app: StoreApp, onPermission: () -> 
             AppAction.OPEN -> "Abrir"
         }
     }
-    Button(onClick = { vm.act(app, onPermission) }, modifier, enabled = !busy) { Text(text) }
+    Button(onClick = { vm.act(app, onPermission) }, modifier, enabled = s !is InstallState.Downloading) { Text(text) }
 }
 
 private fun meta(app: StoreApp) = "v${app.versionName} · " + String.format(Locale.getDefault(), "%.1f MB", app.size / 1048576.0)

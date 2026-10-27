@@ -1,8 +1,11 @@
 package dev.mystore.core
 
 import android.app.Application
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.util.LruCache
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -10,8 +13,18 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+// Mayor potencia de 2 que deja el lado mayor decodificado <= target
+fun sampleSize(width: Int, height: Int, target: Int): Int {
+    val max = maxOf(width, height)
+    var s = 1
+    while (max / s > target) s *= 2
+    return s
+}
 
 sealed interface Screen {
     data object Setup : Screen
@@ -21,7 +34,7 @@ sealed interface Screen {
 }
 
 // Lógica común de las apps tienda; `type` es "phone" o "watch"
-open class StoreViewModel(app: Application, private val type: String) : AndroidViewModel(app) {
+open class StoreViewModel(app: Application, private val type: String, private val shotTarget: Int = 1080) : AndroidViewModel(app) {
     val installer = Installer(app)
     private val settings = StoreSettings(app)
     private var client: StoreClient? = null
@@ -59,6 +72,7 @@ open class StoreViewModel(app: Application, private val type: String) : AndroidV
             loading = true
             try {
                 apps = c.apps(type)
+                clearShots()
                 error = null
                 refreshInstalled()
             } catch (e: StoreException) {
@@ -78,7 +92,7 @@ open class StoreViewModel(app: Application, private val type: String) : AndroidV
             settings.storeUrl = url
             client = c
             icons.clear()
-            shots.clear()
+            clearShots()
             error = null
             refreshInstalled()
             screen = Screen.List
@@ -101,25 +115,37 @@ open class StoreViewModel(app: Application, private val type: String) : AndroidV
         }
     }
 
-    // Capturas: caché en memoria, reducidas con inSampleSize (lado mayor <= 1600 px)
-    val shots = mutableStateMapOf<String, ImageBitmap?>()
+    // Capturas: caché LRU en bytes; shotTick fuerza la recomposición al cambiarla
+    private val shotCache = object : LruCache<String, Bitmap>((Runtime.getRuntime().maxMemory() / 8).toInt()) {
+        override fun sizeOf(key: String, value: Bitmap) = value.byteCount
+    }
+    private val shotLoading = HashSet<String>()
+    private var shotTick by mutableIntStateOf(0)
+
+    fun shot(url: String): ImageBitmap? {
+        shotTick // lectura para suscribir la composición
+        return shotCache.get(url)?.asImageBitmap()
+    }
 
     fun loadShot(url: String) {
-        if (shots.containsKey(url)) return
-        shots[url] = null
-        val c = client ?: return
+        if (shotCache.get(url) != null || !shotLoading.add(url)) return
+        val c = client ?: run { shotLoading.remove(url); return }
         viewModelScope.launch {
             try {
                 val b = c.bytes(url)
-                val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                BitmapFactory.decodeByteArray(b, 0, b.size, o)
-                var s = 1
-                while (maxOf(o.outWidth, o.outHeight) / (s * 2) >= 1600) s *= 2
-                val opts = BitmapFactory.Options().apply { inSampleSize = s }
-                shots[url] = BitmapFactory.decodeByteArray(b, 0, b.size, opts)?.asImageBitmap()
+                val bmp = withContext(Dispatchers.Default) {
+                    val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    BitmapFactory.decodeByteArray(b, 0, b.size, o)
+                    val opts = BitmapFactory.Options().apply { inSampleSize = sampleSize(o.outWidth, o.outHeight, shotTarget) }
+                    BitmapFactory.decodeByteArray(b, 0, b.size, opts)
+                }
+                if (bmp != null) { shotCache.put(url, bmp); shotTick++ }
             } catch (e: Exception) { /* se queda el hueco gris */ }
+            finally { shotLoading.remove(url) }
         }
     }
+
+    private fun clearShots() { shotCache.evictAll(); shotTick++ }
 
     fun act(app: StoreApp, onPermission: () -> Unit) {
         when (actionFor(app.versionCode, installed[app.id])) {

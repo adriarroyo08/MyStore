@@ -8,7 +8,7 @@ import androidx.activity.viewModels
 import androidx.wear.compose.material.MaterialTheme
 import dev.mystore.core.StoreViewModel
 
-class WatchViewModel(app: Application) : StoreViewModel(app, "watch")
+class WatchViewModel(app: Application) : StoreViewModel(app, "watch", shotTarget = 400)
 
 class MainActivity : ComponentActivity() {
     private val vm: WatchViewModel by viewModels()

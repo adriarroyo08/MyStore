@@ -163,7 +163,7 @@ private fun DetailScreen(vm: StoreViewModel, app: StoreApp, onPermission: () -> 
                     InstallState.Installing -> CircularProgressIndicator(Modifier.fillMaxSize())
                     else -> {}
                 }
-                Button(onClick = { vm.act(app, onPermission) }, enabled = !busy, modifier = Modifier.size(60.dp)) {
+                Button(onClick = { vm.act(app, onPermission) }, enabled = s !is InstallState.Downloading, modifier = Modifier.size(60.dp)) {
                     Text(if (busy) "…" else label, style = MaterialTheme.typography.caption2, maxLines = 1)
                 }
             }
@@ -174,8 +174,8 @@ private fun DetailScreen(vm: StoreViewModel, app: StoreApp, onPermission: () -> 
         item { Text("Acerca de esta app", style = MaterialTheme.typography.title3, textAlign = TextAlign.Center) }
         item { Text(app.description.ifBlank { "Sin descripción" }, style = MaterialTheme.typography.body2, textAlign = TextAlign.Center) }
         items(app.screenshots) { url ->
-            LaunchedEffect(url) { vm.loadShot(url) }
-            val bmp = vm.shots[url]
+            val bmp = vm.shot(url)
+            LaunchedEffect(url, bmp == null) { vm.loadShot(url) }
             val m = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
             if (bmp != null) Image(bmp, null, m, contentScale = ContentScale.FillWidth)
             else Box(m.height(80.dp).background(MaterialTheme.colors.surface))
