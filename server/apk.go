@@ -69,11 +69,12 @@ func ParseAPK(path string) (Meta, []byte, error) {
 		return invalid(fmt.Errorf("manifest ilegible: %v", err))
 	}
 
-	certs, err := apkverifier.ExtractCerts(path, zr)
-	if err != nil || len(certs) == 0 || len(certs[0]) == 0 {
-		return invalid(fmt.Errorf("sin firma: %v", err))
+	// Verify comprueba la firma (APK corrupta o manipulada → inválida), no solo la extrae.
+	res, err := apkverifier.Verify(path, zr)
+	if err != nil || len(res.SignerCerts) == 0 || len(res.SignerCerts[0]) == 0 {
+		return invalid(fmt.Errorf("firma no válida: %v", err))
 	}
-	sum := sha256.Sum256(certs[0][0].Raw)
+	sum := sha256.Sum256(res.SignerCerts[0][0].Raw)
 
 	m := Meta{
 		Package:     mx.Package,

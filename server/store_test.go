@@ -187,3 +187,18 @@ func TestIconPath(t *testing.T) {
 		t.Errorf("ok=%v err=%v", ok, err)
 	}
 }
+
+func TestRecoversInterruptedReplace(t *testing.T) {
+	dir := t.TempDir()
+	s, _ := NewStore(dir)
+	mustPut(t, s, "phone-v1.apk", "", "")
+	// Simula un corte entre los dos renombrados de replaceDir.
+	apps := filepath.Join(dir, "apps")
+	if err := os.Rename(filepath.Join(apps, "com.example.demo-phone"), filepath.Join(apps, ".old-com.example.demo-phone")); err != nil {
+		t.Fatal(err)
+	}
+	s, _ = NewStore(dir)
+	if a, err := s.Get("com.example.demo-phone"); err != nil || a.VersionCode != 1 {
+		t.Errorf("app lost after restart: %+v %v", a, err)
+	}
+}

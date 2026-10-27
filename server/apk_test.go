@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -65,6 +66,17 @@ func TestNoIcon(t *testing.T) {
 func TestInvalid(t *testing.T) {
 	_, _, err := ParseAPK("testdata/not-an-apk.apk")
 	if !errors.Is(err, ErrInvalidAPK) {
+		t.Errorf("err = %v", err)
+	}
+}
+
+func TestTamperedAPK(t *testing.T) {
+	data, _ := os.ReadFile("testdata/phone-v1.apk")
+	i := bytes.Index(data, pngMagic) // el icono va sin comprimir: cambiar un byte no rompe el zip
+	data[i+20] ^= 0xff
+	p := filepath.Join(t.TempDir(), "tampered.apk")
+	os.WriteFile(p, data, 0o644)
+	if _, _, err := ParseAPK(p); !errors.Is(err, ErrInvalidAPK) {
 		t.Errorf("err = %v", err)
 	}
 }

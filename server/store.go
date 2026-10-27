@@ -43,15 +43,25 @@ func NewStore(dir string) (*Store, error) {
 	if err := os.MkdirAll(apps, 0o755); err != nil {
 		return nil, err
 	}
-	// Restos de escrituras interrumpidas.
+	// Restos de escrituras interrumpidas. Un .old-<id> sin <id> es un corte a mitad de
+	// replaceDir: se restaura en vez de borrarse.
 	entries, err := os.ReadDir(apps)
 	if err != nil {
 		return nil, err
 	}
 	for _, e := range entries {
-		if strings.HasPrefix(e.Name(), ".") {
-			os.RemoveAll(filepath.Join(apps, e.Name()))
+		name := e.Name()
+		if !strings.HasPrefix(name, ".") {
+			continue
 		}
+		if id, ok := strings.CutPrefix(name, ".old-"); ok {
+			if _, err := os.Stat(filepath.Join(apps, id)); errors.Is(err, os.ErrNotExist) {
+				if os.Rename(filepath.Join(apps, name), filepath.Join(apps, id)) == nil {
+					continue
+				}
+			}
+		}
+		os.RemoveAll(filepath.Join(apps, name))
 	}
 	return &Store{apps: apps}, nil
 }
