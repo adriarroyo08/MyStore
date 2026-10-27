@@ -30,9 +30,13 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // Al volver del instalador o de ajustes se recalcula qué está instalado
+    private var resumedOnce = false
+
+    // Al volver a la app se recargan las versiones de la tienda (la primera vez ya carga el ViewModel)
+    // y se recalcula qué está instalado
     override fun onResume() {
         super.onResume()
+        if (resumedOnce) vm.load() else resumedOnce = true
         vm.installer.refresh()
         // Se pide el permiso una sola vez, cuando ya hay tienda configurada
         val prefs = getSharedPreferences("mystore_updates", MODE_PRIVATE)
