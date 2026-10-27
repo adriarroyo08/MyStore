@@ -1,0 +1,35 @@
+name: CI
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+      - run: go vet ./...
+      - run: go test ./...
+
+  docker-and-action:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t mystore ./server
+      - run: docker run -d --name mystore -p 8080:8080 -e MYSTORE_TOKEN=ci mystore
+      - run: |
+          for i in $(seq 20); do curl -sf localhost:8080/api/apps && exit 0; sleep 1; done
+          docker logs mystore; exit 1
+      - uses: ./
+        with:
+          store-url: http://localhost:8080
+          token: ci
+          apk: server/testdata/phone-v*1.apk
+          notes: "@no-es-un-fichero"
+      - run: curl -sf localhost:8080/api/apps | grep -q '"notes":"@no-es-un-fichero"'

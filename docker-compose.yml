@@ -1,0 +1,11 @@
+services:
+  mystore:
+    build: ./server
+    restart: unless-stopped
+    environment:
+      MYSTORE_TOKEN: ${MYSTORE_TOKEN:?define MYSTORE_TOKEN}
+      # MYSTORE_MAX_UPLOAD_MB: 300
+    volumes:
+      - ./data:/data
+    ports:
+      - "8080:8080"

@@ -1,0 +1,43 @@
+name: Subir APK a MyStore
+description: Sube una APK a tu tienda MyStore autoalojada.
+branding:
+  icon: upload-cloud
+  color: blue
+inputs:
+  store-url:
+    description: URL de tu tienda, por ejemplo https://tienda.tudominio.com
+    required: true
+  token:
+    description: Token de administrador (guárdalo como secreto del repositorio)
+    required: true
+  apk:
+    description: Ruta de la APK (admite un patrón glob que coincida con un solo fichero)
+    required: true
+  notes:
+    description: Notas de la versión
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        STORE_URL: ${{ inputs.store-url }}
+        TOKEN: ${{ inputs.token }}
+        APK: ${{ inputs.apk }}
+        NOTES: ${{ inputs.notes }}
+      run: |
+        set -euo pipefail
+        shopt -s nullglob
+        files=($APK)
+        if [ ${#files[@]} -ne 1 ]; then
+          echo "::error::'$APK' debe coincidir con exactamente una APK (coincide con ${#files[@]})"
+          exit 1
+        fi
+        echo "Subiendo ${files[0]} a ${STORE_URL%/}"
+        curl --silent --show-error --fail-with-body \
+          -H "Authorization: Bearer $TOKEN" \
+          -F "apk=@${files[0]}" \
+          -F "notes=<-" \
+          "${STORE_URL%/}/api/apps" <<< "$NOTES"
+        echo
