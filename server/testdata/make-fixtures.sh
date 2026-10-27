@@ -14,12 +14,13 @@ for k in a b; do
     -alias key -keyalg RSA -keysize 2048 -validity 36500 -dname "CN=MyStore test $k" >/dev/null
 done
 
-"$BT/aapt2" compile --dir src/res -o "$TMP/res.zip"
-
-# build <out> <manifest> <versionCode> <versionName> <key> [res]
+# build <out> <manifest> <versionCode> <versionName> <key> [carpeta de recursos en src/]
 build() {
   local res=()
-  [ "${6:-}" = res ] && res=("$TMP/res.zip")
+  if [ -n "${6:-}" ]; then
+    "$BT/aapt2" compile --dir "src/$6" -o "$TMP/$6.zip"
+    res=("$TMP/$6.zip")
+  fi
   "$BT/aapt2" link -I "$JAR" --manifest "src/$2" --min-sdk-version 30 --target-sdk-version 36 \
     --version-code "$3" --version-name "$4" -o "$TMP/u.apk" "${res[@]}"
   "$BT/zipalign" -f -p 4 "$TMP/u.apk" "$TMP/a.apk"
@@ -32,5 +33,7 @@ build phone-v2.apk phone.xml 2 2.0 a res
 build phone-v2-otherkey.apk phone.xml 2 2.0 b res
 build watch-v1.apk watch.xml 1 1.0 a res
 build noicon-v1.apk noicon.xml 1 1.0 a
+build adaptive-v1.apk adaptive.xml 1 1.0 a res-adaptive
+build badvector-v1.apk badvector.xml 1 1.0 a res-badvector
 head -c 1024 /dev/zero | tr '\0' 'x' > not-an-apk.apk
 echo "fixtures OK"

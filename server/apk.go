@@ -96,11 +96,15 @@ func ParseAPK(path string) (Meta, []byte, error) {
 	}
 
 	// apkparser resuelve @mipmap/... a la ruta del fichero dentro de la APK.
-	// ponytail: solo iconos PNG; los adaptativos (XML) o WebP usan el genérico. Rasterizarlos si molesta.
+	// Si no es PNG (adaptativo, vector, WebP) se rasteriza; si no se sabe, nil y la web usa el genérico.
 	var icon []byte
 	if f := zr.File[mx.App.Icon]; f != nil {
-		if data, err := f.ReadAll(5 << 20); err == nil && bytes.HasPrefix(data, pngMagic) {
-			icon = data
+		if data, err := f.ReadAll(5 << 20); err == nil {
+			if bytes.HasPrefix(data, pngMagic) {
+				icon = data
+			} else {
+				icon = renderIcon(zr, loadResources(zr), mx.App.Icon)
+			}
 		}
 	}
 	return m, icon, nil
