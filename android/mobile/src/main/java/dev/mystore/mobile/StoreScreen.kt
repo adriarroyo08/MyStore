@@ -7,6 +7,19 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -37,25 +50,34 @@ fun StoreScreen(vm: StoreViewModel, onPermission: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SetupScreen(vm: StoreViewModel, title: String, onBack: (() -> Unit)?) {
     var url by remember { mutableStateOf(vm.storeUrl) }
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    Column(Modifier.fillMaxSize().systemBarsPadding().padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text(title, style = MaterialTheme.typography.headlineSmall)
-        OutlinedTextField(
-            url, { url = it }, Modifier.fillMaxWidth(), singleLine = true,
-            label = { Text("URL de la tienda") }, placeholder = { Text("http://192.168.1.10:8080") },
-            isError = error != null, supportingText = error?.let { { Text(it) } },
-        )
-        Button(
-            onClick = { scope.launch { busy = true; error = vm.connect(url); busy = false } },
-            enabled = !busy,
-        ) { Text(if (busy) "Conectando…" else "Conectar") }
-        if (onBack != null) TextButton(onClick = onBack) { Text("Cancelar") }
+    Scaffold(topBar = {
+        if (onBack != null) TopAppBar(title = { Text(title) }, navigationIcon = { BackButton(onBack) })
+    }) { pad ->
+        Column(Modifier.fillMaxSize().padding(pad).systemBarsPadding().padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            if (onBack == null) Text(title, style = MaterialTheme.typography.headlineSmall)
+            OutlinedTextField(
+                url, { url = it }, Modifier.fillMaxWidth(), singleLine = true,
+                label = { Text("URL de la tienda") }, placeholder = { Text("http://192.168.1.10:8080") },
+                isError = error != null, supportingText = error?.let { { Text(it) } },
+            )
+            Button(
+                onClick = { scope.launch { busy = true; error = vm.connect(url); busy = false } },
+                enabled = !busy,
+            ) { Text(if (busy) "Conectando…" else "Conectar") }
+        }
     }
+}
+
+@Composable
+private fun BackButton(onBack: () -> Unit) {
+    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Atrás") }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -110,28 +132,81 @@ private fun ListScreen(vm: StoreViewModel, onPermission: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun DetailScreen(vm: StoreViewModel, app: StoreApp, onPermission: () -> Unit) {
-    Column(Modifier.fillMaxSize().systemBarsPadding().verticalScroll(rememberScrollState()).padding(24.dp)) {
-        TextButton(onClick = { vm.screen = Screen.List }) { Text("← Volver") }
-        AppIcon(vm, app, 96.dp)
-        Spacer(Modifier.height(12.dp))
-        Text(app.label, style = MaterialTheme.typography.headlineSmall)
-        Text(meta(app), style = MaterialTheme.typography.bodyMedium)
-        Spacer(Modifier.height(12.dp))
-        ActionButton(vm, app, onPermission)
-        ProgressOrError(vm, app)
-        if (app.description.isNotBlank()) {
-            Spacer(Modifier.height(20.dp))
-            Text(app.description)
-        }
-        if (app.notes.isNotBlank()) {
-            Spacer(Modifier.height(20.dp))
-            Text("Novedades", style = MaterialTheme.typography.titleMedium)
-            Text(app.notes)
+    // Índice de la captura abierta en el visor (null = cerrado); atrás cierra el visor primero
+    var viewer by remember { mutableStateOf<Int?>(null) }
+    viewer?.let { i ->
+        BackHandler { viewer = null }
+        ShotViewer(vm, app.screenshots, i) { viewer = null }
+        return
+    }
+    Scaffold(topBar = {
+        TopAppBar(title = {}, navigationIcon = { BackButton { vm.screen = Screen.List } })
+    }) { pad ->
+        Column(Modifier.fillMaxSize().padding(pad).verticalScroll(rememberScrollState())) {
+            Row(Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+                AppIcon(vm, app, 88.dp)
+                Spacer(Modifier.width(16.dp))
+                Column {
+                    Text(app.label, style = MaterialTheme.typography.headlineSmall)
+                    Text(meta(app), style = MaterialTheme.typography.bodyMedium)
+                    formatUpdated(app.updatedAt)?.let { Text("Actualizada el $it", style = MaterialTheme.typography.bodySmall) }
+                }
+            }
+            Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
+                ActionButton(vm, app, onPermission, Modifier.fillMaxWidth())
+                ProgressOrError(vm, app)
+            }
+            if (app.screenshots.isNotEmpty()) {
+                LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    itemsIndexed(app.screenshots) { i, url ->
+                        LaunchedEffect(url) { vm.loadShot(url) }
+                        val bmp = vm.shots[url]
+                        val m = Modifier.height(200.dp).clip(RoundedCornerShape(12.dp)).clickable { viewer = i }
+                        if (bmp != null) Image(bmp, null, m, contentScale = ContentScale.FillHeight)
+                        else Box(m.width(112.dp).background(MaterialTheme.colorScheme.surfaceVariant))
+                    }
+                }
+            }
+            Column(Modifier.padding(20.dp)) {
+                Text("Acerca de esta app", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(8.dp))
+                Text(app.description.ifBlank { "Sin descripción" })
+                if (app.notes.isNotBlank()) {
+                    Spacer(Modifier.height(24.dp))
+                    Text("Novedades", style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(8.dp))
+                    Text(app.notes)
+                }
+            }
         }
     }
 }
+
+// Visor a pantalla completa, deslizable entre capturas
+@Composable
+private fun ShotViewer(vm: StoreViewModel, shots: List<String>, start: Int, onClose: () -> Unit) {
+    val pager = rememberPagerState(start) { shots.size }
+    Box(Modifier.fillMaxSize().background(Color.Black)) {
+        HorizontalPager(pager, Modifier.fillMaxSize().systemBarsPadding()) { i ->
+            LaunchedEffect(shots[i]) { vm.loadShot(shots[i]) }
+            val bmp = vm.shots[shots[i]]
+            Box(Modifier.fillMaxSize(), Alignment.Center) {
+                if (bmp != null) Image(bmp, null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+                else CircularProgressIndicator()
+            }
+        }
+        IconButton(onClose, Modifier.systemBarsPadding()) { Icon(Icons.Filled.Close, "Cerrar", tint = Color.White) }
+        Text("${pager.currentPage + 1}/${shots.size}", Modifier.align(Alignment.BottomCenter).systemBarsPadding().padding(8.dp), color = Color.White)
+    }
+}
+
+private fun formatUpdated(iso: String): String? = try {
+    DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(Locale.getDefault())
+        .format(Instant.parse(iso).atZone(ZoneId.systemDefault()))
+} catch (e: Exception) { null }
 
 // Con scroll para que tirar de la pantalla vacía siga recargando
 @Composable
@@ -164,7 +239,7 @@ private fun ProgressOrError(vm: StoreViewModel, app: StoreApp) {
 }
 
 @Composable
-private fun ActionButton(vm: StoreViewModel, app: StoreApp, onPermission: () -> Unit) {
+private fun ActionButton(vm: StoreViewModel, app: StoreApp, onPermission: () -> Unit, modifier: Modifier = Modifier) {
     val s = vm.installStates[app.id]
     val busy = s is InstallState.Downloading || s is InstallState.Installing
     val text = when {
@@ -176,7 +251,7 @@ private fun ActionButton(vm: StoreViewModel, app: StoreApp, onPermission: () -> 
             AppAction.OPEN -> "Abrir"
         }
     }
-    Button(onClick = { vm.act(app, onPermission) }, enabled = !busy) { Text(text) }
+    Button(onClick = { vm.act(app, onPermission) }, modifier, enabled = !busy) { Text(text) }
 }
 
 private fun meta(app: StoreApp) = "v${app.versionName} · " + String.format(Locale.getDefault(), "%.1f MB", app.size / 1048576.0)

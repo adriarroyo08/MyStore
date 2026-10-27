@@ -8,6 +8,7 @@ data class StoreApp(
     val id: String, val pkg: String, val type: String, val label: String,
     val versionCode: Long, val versionName: String, val size: Long, val description: String,
     val notes: String, val iconUrl: String, val apkUrl: String, // URLs ya absolutas
+    val screenshots: List<String> = emptyList(), val updatedAt: String = "",
 )
 
 enum class AppAction { INSTALL, UPDATE, OPEN }
@@ -39,6 +40,8 @@ fun parseApps(json: String, baseUrl: String): List<StoreApp> {
             versionName = o.optString("versionName"), size = o.optLong("size"),
             description = o.optString("description"), notes = o.optString("notes"),
             iconUrl = baseUrl + o.optString("iconUrl"), apkUrl = baseUrl + o.optString("apkUrl"),
+            updatedAt = o.optString("updatedAt"),
+            screenshots = o.optJSONArray("screenshots")?.let { a -> (0 until a.length()).map { i -> baseUrl + a.getString(i) } }.orEmpty(),
         )
     }
 }

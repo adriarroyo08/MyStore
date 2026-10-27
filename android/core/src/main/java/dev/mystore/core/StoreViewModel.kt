@@ -78,6 +78,7 @@ open class StoreViewModel(app: Application, private val type: String) : AndroidV
             settings.storeUrl = url
             client = c
             icons.clear()
+            shots.clear()
             error = null
             refreshInstalled()
             screen = Screen.List
@@ -97,6 +98,26 @@ open class StoreViewModel(app: Application, private val type: String) : AndroidV
                 val b = c.icon(app)
                 icons[key] = BitmapFactory.decodeByteArray(b, 0, b.size)?.asImageBitmap()
             } catch (e: Exception) { /* se queda el icono genérico */ }
+        }
+    }
+
+    // Capturas: caché en memoria, reducidas con inSampleSize (lado mayor <= 1600 px)
+    val shots = mutableStateMapOf<String, ImageBitmap?>()
+
+    fun loadShot(url: String) {
+        if (shots.containsKey(url)) return
+        shots[url] = null
+        val c = client ?: return
+        viewModelScope.launch {
+            try {
+                val b = c.bytes(url)
+                val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeByteArray(b, 0, b.size, o)
+                var s = 1
+                while (maxOf(o.outWidth, o.outHeight) / (s * 2) >= 1600) s *= 2
+                val opts = BitmapFactory.Options().apply { inSampleSize = s }
+                shots[url] = BitmapFactory.decodeByteArray(b, 0, b.size, opts)?.asImageBitmap()
+            } catch (e: Exception) { /* se queda el hueco gris */ }
         }
     }
 

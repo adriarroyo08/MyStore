@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
 	"io"
 	"os"
 	"path/filepath"
@@ -18,7 +20,11 @@ var (
 	ErrNotFound     = errors.New("app no encontrada")
 	ErrNotNewer     = errors.New("ya hay una versión igual o más nueva de esta app")
 	ErrCertMismatch = errors.New("la APK está firmada con otra clave; borra la app si quieres cambiar de firma")
+	ErrBadImage     = errors.New("la captura no es una imagen PNG, JPEG o WebP válida de hasta 4096 px por lado")
+	ErrTooManyShots = errors.New("ya hay 8 capturas; quita alguna antes de añadir otra")
 )
+
+const maxShots = 8
 
 type App struct {
 	Meta
@@ -26,6 +32,7 @@ type App struct {
 	Description string    `json:"description"`
 	Notes       string    `json:"notes"`
 	HasIcon     bool      `json:"hasIcon"`
+	Shots       []string  `json:"shots"` // nombres de fichero en shots/, en orden de subida
 	UpdatedAt   time.Time `json:"updatedAt"`
 }
 
@@ -136,6 +143,7 @@ func (s *Store) Put(tmpAPK, notes, description string) (App, error) {
 		if a.Description == "" {
 			a.Description = old.Description
 		}
+		a.Shots = old.Shots
 	case !errors.Is(err, ErrNotFound):
 		return App{}, err
 	}
@@ -152,6 +160,16 @@ func (s *Store) Put(tmpAPK, notes, description string) (App, error) {
 	if icon != nil {
 		if err := os.WriteFile(filepath.Join(tmp, "icon.png"), icon, 0o644); err != nil {
 			return App{}, err
+		}
+	}
+	if len(a.Shots) > 0 { // las capturas sobreviven a la nueva versión
+		if err := os.Mkdir(filepath.Join(tmp, "shots"), 0o755); err != nil {
+			return App{}, err
+		}
+		for _, f := range a.Shots {
+			if err := copyFile(filepath.Join(dest, "shots", f), filepath.Join(tmp, "shots", f)); err != nil {
+				return App{}, err
+			}
 		}
 	}
 	if err := writeMeta(tmp, a); err != nil {
@@ -203,6 +221,89 @@ func (s *Store) IconPath(id string) (string, bool, error) {
 	}
 	d, _ := s.dir(id)
 	return filepath.Join(d, "icon.png"), a.HasIcon, nil
+}
+
+// AddShot valida data como imagen y la añade al final de las capturas de la app.
+func (s *Store) AddShot(id string, data []byte) (App, error) {
+	cfg, format, err := image.DecodeConfig(bytes.NewReader(data))
+	ext := map[string]string{"png": ".png", "jpeg": ".jpg", "webp": ".webp"}[format]
+	if err != nil || ext == "" || cfg.Width > 4096 || cfg.Height > 4096 || cfg.Width < 1 || cfg.Height < 1 {
+		return App{}, ErrBadImage
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	a, err := s.Get(id)
+	if err != nil {
+		return App{}, err
+	}
+	if len(a.Shots) >= maxShots {
+		return App{}, ErrTooManyShots
+	}
+	d, _ := s.dir(id)
+	if err := os.MkdirAll(filepath.Join(d, "shots"), 0o755); err != nil {
+		return App{}, err
+	}
+	name := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
+	tmp := filepath.Join(d, "shots", name+".tmp")
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return App{}, err
+	}
+	if err := os.Rename(tmp, filepath.Join(d, "shots", name)); err != nil {
+		return App{}, err
+	}
+	a.Shots = append(a.Shots, name)
+	return a, writeMeta(d, a)
+}
+
+// RemoveShot quita la captura n (1..N); las siguientes se desplazan.
+func (s *Store) RemoveShot(id string, n int) (App, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	a, err := s.Get(id)
+	if err != nil {
+		return App{}, err
+	}
+	if n < 1 || n > len(a.Shots) {
+		return App{}, ErrNotFound
+	}
+	d, _ := s.dir(id)
+	name := a.Shots[n-1]
+	a.Shots = append(a.Shots[:n-1:n-1], a.Shots[n:]...)
+	if err := writeMeta(d, a); err != nil {
+		return App{}, err
+	}
+	os.Remove(filepath.Join(d, "shots", name))
+	return a, nil
+}
+
+// ShotPath devuelve la ruta de la captura n (1..N). Solo se usan nombres de meta.json.
+func (s *Store) ShotPath(id string, n int) (string, error) {
+	a, err := s.Get(id)
+	if err != nil {
+		return "", err
+	}
+	if n < 1 || n > len(a.Shots) {
+		return "", ErrNotFound
+	}
+	d, _ := s.dir(id)
+	return filepath.Join(d, "shots", a.Shots[n-1]), nil
+}
+
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		return err
+	}
+	return out.Close()
 }
 
 // writeMeta escribe meta.json de forma atómica.

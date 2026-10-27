@@ -21,6 +21,9 @@ class StoreClient(val baseUrl: String) {
 
     suspend fun icon(app: StoreApp): ByteArray = withContext(Dispatchers.IO) { get(app.iconUrl) }
 
+    // Descarga genérica (capturas)
+    suspend fun bytes(url: String): ByteArray = withContext(Dispatchers.IO) { get(url) }
+
     private fun get(url: String): ByteArray {
         try {
             val c = URL(url).openConnection() as HttpURLConnection

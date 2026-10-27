@@ -6,26 +6,48 @@ import (
 	_ "embed"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"image"
 	"image/png"
 	"io"
 	"log"
 	"net/http"
 	"os"
+	"regexp"
+	"strconv"
 	"strings"
 )
+
+// shotIdxRe admite solo 1..999 sin ceros ni signos; lo demás es 404.
+var shotIdxRe = regexp.MustCompile(`^[1-9][0-9]{0,2}$`)
+
+func shotIndex(r *http.Request) int {
+	s := r.PathValue("n")
+	if !shotIdxRe.MatchString(s) {
+		return 0
+	}
+	n, _ := strconv.Atoi(s)
+	return n
+}
+
+const maxShotBytes = 5 << 20
 
 //go:embed web/index.html
 var adminPage []byte
 
 type appJSON struct {
 	App
-	IconURL string `json:"iconUrl"`
-	APKURL  string `json:"apkUrl"`
+	IconURL     string   `json:"iconUrl"`
+	APKURL      string   `json:"apkUrl"`
+	Screenshots []string `json:"screenshots"`
 }
 
 func withURLs(a App) appJSON {
-	return appJSON{App: a, IconURL: "/api/apps/" + a.ID + "/icon", APKURL: "/api/apps/" + a.ID + "/apk"}
+	shots := make([]string, len(a.Shots))
+	for i := range shots {
+		shots[i] = fmt.Sprintf("/api/apps/%s/screenshots/%d", a.ID, i+1)
+	}
+	return appJSON{App: a, IconURL: "/api/apps/" + a.ID + "/icon", APKURL: "/api/apps/" + a.ID + "/apk", Screenshots: shots}
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -45,7 +67,9 @@ func storeError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusNotFound, err.Error())
 	case errors.Is(err, ErrInvalidAPK):
 		writeError(w, http.StatusBadRequest, ErrInvalidAPK.Error())
-	case errors.Is(err, ErrNotNewer), errors.Is(err, ErrCertMismatch):
+	case errors.Is(err, ErrBadImage):
+		writeError(w, http.StatusBadRequest, err.Error())
+	case errors.Is(err, ErrNotNewer), errors.Is(err, ErrCertMismatch), errors.Is(err, ErrTooManyShots):
 		writeError(w, http.StatusConflict, err.Error())
 	default:
 		log.Printf("error: %v", err)
@@ -194,6 +218,59 @@ func NewHandler(s *Store, token string, maxUploadBytes int64) http.Handler {
 			return
 		}
 		writeJSON(w, http.StatusCreated, withURLs(a))
+	}))
+
+	mux.HandleFunc("GET /api/apps/{id}/screenshots/{n}", func(w http.ResponseWriter, r *http.Request) {
+		path, err := s.ShotPath(r.PathValue("id"), shotIndex(r))
+		if err != nil {
+			storeError(w, err)
+			return
+		}
+		http.ServeFile(w, r, path) // el Content-Type sale de la extensión guardada
+	})
+
+	mux.HandleFunc("POST /api/apps/{id}/screenshots", auth(func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, maxShotBytes+64<<10)
+		if err := r.ParseMultipartForm(1 << 20); err != nil {
+			var tooBig *http.MaxBytesError
+			if errors.As(err, &tooBig) {
+				writeError(w, http.StatusRequestEntityTooLarge, "la captura supera los 5 MB")
+			} else {
+				writeError(w, http.StatusBadRequest, "se esperaba un formulario multipart con el campo image")
+			}
+			return
+		}
+		defer r.MultipartForm.RemoveAll()
+		f, _, err := r.FormFile("image")
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "falta el campo image")
+			return
+		}
+		defer f.Close()
+		data, err := io.ReadAll(io.LimitReader(f, maxShotBytes+1))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "subida incompleta o mal formada")
+			return
+		}
+		if len(data) > maxShotBytes {
+			writeError(w, http.StatusRequestEntityTooLarge, "la captura supera los 5 MB")
+			return
+		}
+		a, err := s.AddShot(r.PathValue("id"), data)
+		if err != nil {
+			storeError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, withURLs(a))
+	}))
+
+	mux.HandleFunc("DELETE /api/apps/{id}/screenshots/{n}", auth(func(w http.ResponseWriter, r *http.Request) {
+		a, err := s.RemoveShot(r.PathValue("id"), shotIndex(r))
+		if err != nil {
+			storeError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, withURLs(a))
 	}))
 
 	mux.HandleFunc("PATCH /api/apps/{id}", auth(func(w http.ResponseWriter, r *http.Request) {

@@ -30,6 +30,16 @@ class ModelsTest {
         assertEquals(3L, a.versionCode)
     }
 
+    @Test fun parsesScreenshots() {
+        val j = """[{"id":"a-phone","package":"a","type":"phone","label":"A","versionCode":1,"updatedAt":"2026-10-27T10:00:00Z",
+            "screenshots":["/api/apps/a-phone/screenshots/0","/api/apps/a-phone/screenshots/1"]},
+            {"id":"b","package":"b","type":"phone","label":"B","versionCode":1}]"""
+        val (a, b) = parseApps(j, "http://h:8080")
+        assertEquals(listOf("http://h:8080/api/apps/a-phone/screenshots/0", "http://h:8080/api/apps/a-phone/screenshots/1"), a.screenshots)
+        assertEquals("2026-10-27T10:00:00Z", a.updatedAt)
+        assertEquals(emptyList<String>(), b.screenshots)
+    }
+
     @Test fun searchIgnoresCaseAndAccents() {
         val app = StoreApp("c", "dev.cam", "phone", "Cámara", 1, "1", 1, "", "", "", "")
         assertEquals(listOf(app), listOf(app).search("camara"))

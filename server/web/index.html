@@ -33,6 +33,11 @@
   .tag { font-size:11px; padding:1px 6px; border-radius:6px; border:1px solid var(--line); color:var(--muted); margin-left:6px; }
   .actions { display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
   .edit { padding:8px 0 4px 56px; display:grid; gap:8px; }
+  .shots { display:flex; gap:8px; flex-wrap:wrap; }
+  .shot { width:96px; text-align:center; }
+  .shot img { width:96px; height:170px; object-fit:cover; border-radius:8px; border:1px solid var(--line); display:block; margin-bottom:4px; }
+  .shotdrop { border:2px dashed var(--line); border-radius:8px; padding:10px; text-align:center; color:var(--muted); cursor:pointer; font-size:13px; }
+  .shotdrop.over { border-color:var(--accent); color:var(--accent); }
   .empty { color:var(--muted); text-align:center; padding:12px; }
   a { color:var(--accent); }
 </style>
@@ -154,7 +159,37 @@ function appRow(a) {
     if (editor) { editor.remove(); editor = null; return; }
     const desc = el("textarea", { value: a.description, placeholder: "Descripción" });
     const notes = el("textarea", { value: a.notes, placeholder: "Notas de la versión" });
-    editor = el("div", { className: "edit" }, desc, notes,
+    const shotsBox = el("div", { className: "shots" });
+    const shotMsg = el("div", { className: "msg" });
+    const shotFile = el("input", { type: "file", accept: "image/png,image/jpeg,image/webp", multiple: true, hidden: true });
+    const shotDrop = el("div", { className: "shotdrop", tabIndex: 0, role: "button", textContent: "Añadir capturas: arrastra imágenes o haz clic" });
+    const showShots = (urls) => shotsBox.replaceChildren(...urls.map((u, i) => el("div", { className: "shot" },
+      el("img", { src: u + "?" + Date.now(), alt: "" }),
+      el("button", { className: "secondary", textContent: "Quitar", onclick: async () => {
+        const res = await fetch(`/api/apps/${a.id}/screenshots/${i + 1}`, { method: "DELETE", headers: auth() });
+        if (res.ok) { shotMsg.textContent = ""; showShots((await res.json()).screenshots); }
+        else { shotMsg.className = "msg err"; shotMsg.textContent = await apiError(res); }
+      } }))));
+    async function addShots(files) {
+      shotMsg.className = "msg"; shotMsg.textContent = "";
+      for (const f of files) { // en serie para conservar el orden
+        const form = new FormData();
+        form.append("image", f);
+        try {
+          const res = await fetch(`/api/apps/${a.id}/screenshots`, { method: "POST", headers: auth(), body: form });
+          if (res.ok) showShots((await res.json()).screenshots);
+          else { shotMsg.className = "msg err"; shotMsg.textContent = `${f.name}: ${await apiError(res)}`; }
+        } catch { shotMsg.className = "msg err"; shotMsg.textContent = `${f.name}: error de red`; }
+      }
+    }
+    shotDrop.onclick = () => shotFile.click();
+    shotDrop.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") shotFile.click(); };
+    shotFile.onchange = () => { addShots([...shotFile.files]); shotFile.value = ""; };
+    shotDrop.ondragover = (e) => { e.preventDefault(); shotDrop.classList.add("over"); };
+    shotDrop.ondragleave = () => shotDrop.classList.remove("over");
+    shotDrop.ondrop = (e) => { e.preventDefault(); shotDrop.classList.remove("over"); addShots([...e.dataTransfer.files]); };
+    showShots(a.screenshots || []);
+    editor = el("div", { className: "edit" }, desc, notes, shotsBox, shotDrop, shotFile, shotMsg,
       el("div", {}, el("button", { textContent: "Guardar", onclick: async () => {
         const res = await fetch("/api/apps/" + a.id, {
           method: "PATCH", headers: { ...auth(), "Content-Type": "application/json" },

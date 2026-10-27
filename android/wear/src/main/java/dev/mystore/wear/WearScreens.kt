@@ -11,6 +11,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,12 +37,20 @@ fun WearApp(vm: StoreViewModel, onPermission: () -> Unit) {
     BackHandler(vm.screen != Screen.List && vm.screen != Screen.Setup) { vm.screen = Screen.List }
     when (val s = vm.screen) {
         Screen.Setup -> SetupScreen(vm, onBack = null)
-        Screen.Settings -> SetupScreen(vm, onBack = { vm.screen = Screen.List })
+        Screen.Settings -> Swipeable(vm) { SetupScreen(vm, onBack = { vm.screen = Screen.List }) }
         Screen.List -> ListScreen(vm)
         is Screen.Detail -> {
             val app = vm.apps.find { it.id == s.id }
-            if (app != null) DetailScreen(vm, app, onPermission) else vm.screen = Screen.List
+            if (app != null) Swipeable(vm) { DetailScreen(vm, app, onPermission) } else vm.screen = Screen.List
         }
+    }
+}
+
+// Volver a la lista deslizando hacia la derecha (el gesto atrás del reloj)
+@Composable
+private fun Swipeable(vm: StoreViewModel, content: @Composable () -> Unit) {
+    SwipeToDismissBox(onDismissed = { vm.screen = Screen.List }) { isBackground ->
+        if (isBackground) ListScreen(vm) else content()
     }
 }
 
@@ -91,7 +101,8 @@ private fun ListScreen(vm: StoreViewModel) {
     val state = rememberScalingLazyListState()
     val err = vm.error
     Scaffold(timeText = { TimeText() }, positionIndicator = { PositionIndicator(state) }) {
-        ScalingLazyColumn(Modifier.fillMaxSize(), state = state, horizontalAlignment = Alignment.CenterHorizontally) {
+        // Margen superior para que el título no quede bajo la hora
+        ScalingLazyColumn(Modifier.fillMaxSize(), state = state, horizontalAlignment = Alignment.CenterHorizontally, contentPadding = PaddingValues(top = 44.dp, bottom = 32.dp)) {
             item { ListHeader { Text("MyStore") } }
             when {
                 err != null && vm.apps.isEmpty() -> {
@@ -133,7 +144,9 @@ private fun DetailScreen(vm: StoreViewModel, app: StoreApp, onPermission: () -> 
         AppAction.UPDATE -> "Actualizar"
         AppAction.OPEN -> "Abrir"
     }
-    ScalingLazyColumn(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+    val state = rememberScalingLazyListState()
+    Scaffold(timeText = { TimeText() }, positionIndicator = { PositionIndicator(state) }) {
+    ScalingLazyColumn(Modifier.fillMaxSize(), state = state, horizontalAlignment = Alignment.CenterHorizontally, contentPadding = PaddingValues(top = 44.dp, bottom = 32.dp)) {
         item { AppIcon(vm, app, 48.dp) }
         item { Text(app.label, style = MaterialTheme.typography.title3, textAlign = TextAlign.Center) }
         item {
@@ -158,7 +171,20 @@ private fun DetailScreen(vm: StoreViewModel, app: StoreApp, onPermission: () -> 
         if (s is InstallState.Failed) item {
             Text(s.message, color = MaterialTheme.colors.error, textAlign = TextAlign.Center, style = MaterialTheme.typography.caption2)
         }
-        if (app.description.isNotBlank()) item { Text(app.description, style = MaterialTheme.typography.body2, textAlign = TextAlign.Center) }
+        item { Text("Acerca de esta app", style = MaterialTheme.typography.title3, textAlign = TextAlign.Center) }
+        item { Text(app.description.ifBlank { "Sin descripción" }, style = MaterialTheme.typography.body2, textAlign = TextAlign.Center) }
+        items(app.screenshots) { url ->
+            LaunchedEffect(url) { vm.loadShot(url) }
+            val bmp = vm.shots[url]
+            val m = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+            if (bmp != null) Image(bmp, null, m, contentScale = ContentScale.FillWidth)
+            else Box(m.height(80.dp).background(MaterialTheme.colors.surface))
+        }
+        if (app.notes.isNotBlank()) {
+            item { Text("Novedades", style = MaterialTheme.typography.title3, textAlign = TextAlign.Center) }
+            item { Text(app.notes, style = MaterialTheme.typography.body2, textAlign = TextAlign.Center) }
+        }
+    }
     }
 }
 
