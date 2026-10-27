@@ -1,10 +1,12 @@
 package dev.mystore.wear
 
-import android.app.Activity
-import android.app.RemoteInput
+import android.text.InputType
+import android.view.inputmethod.EditorInfo
+import android.widget.EditText
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.widget.doAfterTextChanged
+
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -22,12 +24,10 @@ import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
 import androidx.wear.compose.material.*
-import androidx.wear.input.RemoteInputIntentHelper
 import dev.mystore.core.*
 import kotlinx.coroutines.launch
 import java.util.Locale
 
-private const val KEY = "url"
 private val Green = Color(0xFF4CAF50)
 
 @Composable
@@ -49,26 +49,34 @@ private fun SetupScreen(vm: StoreViewModel, onBack: (() -> Unit)?) {
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    // Teclado del sistema (RemoteInput); connect() añade https:// si falta
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
-        val text = r.data?.let { RemoteInput.getResultsFromIntent(it) }?.getCharSequence(KEY)?.toString()
-        if (r.resultCode == Activity.RESULT_OK && !text.isNullOrBlank()) {
-            scope.launch { busy = true; error = vm.connect(text); busy = false }
-        }
-    }
+    // EditText clásico: el RemoteInput de Mobvoi cierra la tarea sin devolver el texto y el teclado
+    // de Wear no confirma el texto en un BasicTextField de Compose.
+    var url by remember { mutableStateOf(vm.storeUrl.ifEmpty { "https://" }) }
+    val connect = { scope.launch { busy = true; error = vm.connect(url); busy = false } }
     ScalingLazyColumn(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
         item { ListHeader { Text(if (onBack == null) "Conectar" else "Ajustes") } }
-        if (vm.storeUrl.isNotEmpty()) item { Text(vm.storeUrl, style = MaterialTheme.typography.caption2, textAlign = TextAlign.Center) }
+        item {
+            AndroidView(
+                factory = { ctx ->
+                    EditText(ctx).apply {
+                        setText(url)
+                        isSingleLine = true
+                        inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+                        imeOptions = EditorInfo.IME_ACTION_GO
+                        setTextColor(android.graphics.Color.WHITE)
+                        textSize = 14f
+                        doAfterTextChanged { url = it?.toString().orEmpty() }
+                        setOnEditorActionListener { _, _, _ -> connect(); true }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth().clip(CircleShape).background(Color(0xFF303030)).padding(horizontal = 10.dp),
+            )
+        }
         item {
             Chip(
-                onClick = {
-                    val ri = RemoteInput.Builder(KEY).setLabel("URL de la tienda").build()
-                    launcher.launch(RemoteInputIntentHelper.createActionRemoteInputIntent().also {
-                        RemoteInputIntentHelper.putRemoteInputsExtra(it, listOf(ri))
-                    })
-                },
-                label = { Text(if (busy) "Conectando…" else "Escribir dirección") },
-                enabled = !busy, modifier = Modifier.fillMaxWidth(),
+                onClick = { connect() },
+                label = { Text(if (busy) "Conectando…" else "Conectar") },
+                enabled = !busy && url.isNotBlank(), modifier = Modifier.fillMaxWidth(),
             )
         }
         error?.let { item { Text(it, color = MaterialTheme.colors.error, textAlign = TextAlign.Center, style = MaterialTheme.typography.caption2) } }
