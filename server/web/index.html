@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MyStore</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --fg:#1f2328; --muted:#6b7280; --line:#e5e7eb; --accent:#1a73e8; --danger:#d93025; --ok:#0b8043; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#111418; --card:#1b1f24; --fg:#e6e8eb; --muted:#9aa1a9; --line:#2b3138; --accent:#8ab4f8; --danger:#f28b82; --ok:#81c995; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.4 system-ui, sans-serif; }
+  main { max-width:760px; margin:0 auto; padding:24px 16px; }
+  h1 { font-size:22px; margin:0 0 16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:16px; }
+  label { display:block; font-size:13px; color:var(--muted); margin-bottom:4px; }
+  input[type=password], input[type=text], textarea { width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:8px; background:transparent; color:inherit; font:inherit; }
+  textarea { min-height:60px; resize:vertical; }
+  button { border:0; border-radius:16px; padding:6px 14px; font:inherit; font-size:13px; cursor:pointer; background:var(--accent); color:#fff; }
+  button.secondary { background:transparent; color:var(--accent); border:1px solid var(--line); }
+  button.danger { background:var(--danger); }
+  #drop { border:2px dashed var(--line); border-radius:12px; padding:28px; text-align:center; color:var(--muted); cursor:pointer; margin:12px 0; }
+  #drop.over { border-color:var(--accent); color:var(--accent); }
+  .msg { font-size:13px; margin:4px 0; }
+  .msg.err { color:var(--danger); } .msg.ok { color:var(--ok); }
+  progress { width:100%; }
+  .row { display:flex; align-items:center; gap:12px; padding:10px 0; border-top:1px solid var(--line); }
+  .row:first-child { border-top:0; }
+  .row img { width:44px; height:44px; border-radius:10px; flex:none; }
+  .meta { flex:1; min-width:0; }
+  .meta small { color:var(--muted); display:block; }
+  .tag { font-size:11px; padding:1px 6px; border-radius:6px; border:1px solid var(--line); color:var(--muted); margin-left:6px; }
+  .actions { display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
+  .edit { padding:8px 0 4px 56px; display:grid; gap:8px; }
+  .empty { color:var(--muted); text-align:center; padding:12px; }
+  a { color:var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>MyStore</h1>
+
+  <div class="card">
+    <label for="token">Token de administrador</label>
+    <input id="token" type="password" autocomplete="current-password" placeholder="MYSTORE_TOKEN">
+  </div>
+
+  <div class="card">
+    <label for="notes">Notas de la versión (opcional)</label>
+    <textarea id="notes" placeholder="Qué hay de nuevo"></textarea>
+    <div id="drop" tabindex="0" role="button">Arrastra aquí tus APKs o haz clic para elegirlas</div>
+    <input id="file" type="file" accept=".apk" multiple hidden>
+    <div id="uploads"></div>
+  </div>
+
+  <div class="card">
+    <div id="apps"><div class="empty">Cargando…</div></div>
+  </div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const tokenInput = $("token");
+try { tokenInput.value = localStorage.getItem("mystore-token") || ""; } catch {}
+tokenInput.addEventListener("input", () => { try { localStorage.setItem("mystore-token", tokenInput.value); } catch {} });
+const auth = () => ({ Authorization: "Bearer " + tokenInput.value });
+
+function el(tag, props = {}, ...children) {
+  const e = Object.assign(document.createElement(tag), props);
+  e.append(...children);
+  return e;
+}
+const sizeMB = (b) => (b / 1048576).toFixed(1) + " MB";
+
+async function apiError(res) {
+  try { return (await res.json()).error || res.statusText; } catch { return res.statusText; }
+}
+
+// Subida
+const drop = $("drop"), fileInput = $("file");
+drop.onclick = () => fileInput.click();
+drop.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") fileInput.click(); };
+fileInput.onchange = () => { [...fileInput.files].forEach(upload); fileInput.value = ""; };
+drop.ondragover = (e) => { e.preventDefault(); drop.classList.add("over"); };
+drop.ondragleave = () => drop.classList.remove("over");
+drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove("over"); [...e.dataTransfer.files].forEach(upload); };
+
+function upload(file) {
+  const bar = el("progress", { max: 1, value: 0 });
+  const msg = el("div", { className: "msg", textContent: file.name });
+  $("uploads").prepend(el("div", {}, msg, bar));
+  const form = new FormData();
+  form.append("apk", file);
+  form.append("notes", $("notes").value);
+  const xhr = new XMLHttpRequest();
+  xhr.open("POST", "/api/apps");
+  xhr.setRequestHeader("Authorization", auth().Authorization);
+  xhr.upload.onprogress = (e) => { if (e.lengthComputable) bar.value = e.loaded / e.total; };
+  xhr.onload = () => {
+    bar.remove();
+    let body = {};
+    try { body = JSON.parse(xhr.responseText); } catch {}
+    if (xhr.status === 201) {
+      msg.className = "msg ok";
+      msg.textContent = `${file.name}: subida ${body.label} ${body.versionName}`;
+      loadApps();
+    } else {
+      msg.className = "msg err";
+      msg.textContent = `${file.name}: ${body.error || "error " + xhr.status}`;
+    }
+  };
+  xhr.onerror = () => { bar.remove(); msg.className = "msg err"; msg.textContent = `${file.name}: error de red`; };
+  xhr.send(form);
+}
+
+// Lista
+async function loadApps() {
+  const box = $("apps");
+  let apps;
+  try {
+    const res = await fetch("/api/apps");
+    if (!res.ok) throw new Error(await apiError(res));
+    apps = await res.json();
+  } catch (e) {
+    box.replaceChildren(el("div", { className: "msg err", textContent: "No se pudo cargar la lista: " + e.message }));
+    return;
+  }
+  if (!apps.length) {
+    box.replaceChildren(el("div", { className: "empty", textContent: "Aún no hay apps. Sube tu primera APK." }));
+    return;
+  }
+  box.replaceChildren(...apps.map(appRow));
+}
+
+function appRow(a) {
+  const wrap = el("div");
+  const status = el("div", { className: "msg" });
+  const date = new Date(a.updatedAt).toLocaleString();
+  const row = el("div", { className: "row" },
+    el("img", { src: a.iconUrl, alt: "" }),
+    el("div", { className: "meta" },
+      el("strong", { textContent: a.label }),
+      el("span", { className: "tag", textContent: a.type === "watch" ? "reloj" : "móvil" }),
+      el("small", { textContent: `${a.package} · v${a.versionName} (${a.versionCode}) · ${sizeMB(a.size)} · ${date}` })),
+    el("div", { className: "actions" },
+      el("a", { href: a.apkUrl, textContent: "Descargar" }),
+      el("button", { className: "secondary", textContent: "Editar", onclick: () => toggleEdit() }),
+      el("button", { className: "danger", textContent: "Borrar", onclick: () => askDelete() })));
+  wrap.append(row, status);
+
+  let editor = null;
+  function toggleEdit() {
+    if (editor) { editor.remove(); editor = null; return; }
+    const desc = el("textarea", { value: a.description, placeholder: "Descripción" });
+    const notes = el("textarea", { value: a.notes, placeholder: "Notas de la versión" });
+    editor = el("div", { className: "edit" }, desc, notes,
+      el("div", {}, el("button", { textContent: "Guardar", onclick: async () => {
+        const res = await fetch("/api/apps/" + a.id, {
+          method: "PATCH", headers: { ...auth(), "Content-Type": "application/json" },
+          body: JSON.stringify({ description: desc.value, notes: notes.value }),
+        });
+        if (res.ok) loadApps(); else { status.className = "msg err"; status.textContent = await apiError(res); }
+      } })));
+    wrap.append(editor);
+  }
+
+  function askDelete() {
+    status.className = "msg";
+    status.replaceChildren(`¿Borrar ${a.label} (${a.type === "watch" ? "reloj" : "móvil"})? `,
+      el("button", { className: "danger", textContent: "Sí, borrar", onclick: async () => {
+        const res = await fetch("/api/apps/" + a.id, { method: "DELETE", headers: auth() });
+        if (res.ok) loadApps(); else { status.className = "msg err"; status.textContent = await apiError(res); }
+      } }), " ",
+      el("button", { className: "secondary", textContent: "Cancelar", onclick: () => status.replaceChildren() }));
+  }
+  return wrap;
+}
+
+loadApps();
+</script>
+</body>
+</html>

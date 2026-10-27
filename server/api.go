@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"crypto/subtle"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"image"
@@ -13,6 +14,9 @@ import (
 	"os"
 	"strings"
 )
+
+//go:embed web/index.html
+var adminPage []byte
 
 type appJSON struct {
 	App
@@ -73,6 +77,11 @@ func NewHandler(s *Store, token string, maxUploadBytes int64) http.Handler {
 	}
 
 	mux := http.NewServeMux()
+
+	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write(adminPage)
+	})
 
 	mux.HandleFunc("GET /api/apps", func(w http.ResponseWriter, r *http.Request) {
 		apps, err := s.List(r.URL.Query().Get("type"))

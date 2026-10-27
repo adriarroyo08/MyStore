@@ -179,3 +179,15 @@ func TestTraversal(t *testing.T) {
 		}
 	}
 }
+
+func TestServesAdminPage(t *testing.T) {
+	srv, _ := newTestServer(t, 1<<20)
+	res := do(t, "GET", srv.URL+"/", "", nil, "")
+	body, _ := io.ReadAll(res.Body)
+	if res.StatusCode != 200 || !strings.HasPrefix(res.Header.Get("Content-Type"), "text/html") || !bytes.Contains(body, []byte("MyStore")) {
+		t.Errorf("status %d, type %q", res.StatusCode, res.Header.Get("Content-Type"))
+	}
+	if res := do(t, "GET", srv.URL+"/nope", "", nil, ""); res.StatusCode != 404 {
+		t.Errorf("unknown path: %d", res.StatusCode)
+	}
+}
