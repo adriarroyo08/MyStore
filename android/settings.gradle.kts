@@ -1,4 +1,4 @@
 pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
 dependencyResolutionManagement { repositories { google(); mavenCentral() } }
 rootProject.name = "mystore"
-include(":core", ":mobile")
+include(":core", ":mobile", ":wear")

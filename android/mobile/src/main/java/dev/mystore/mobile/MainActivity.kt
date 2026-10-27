@@ -8,7 +8,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 
 class MainActivity : ComponentActivity() {
-    private val vm: StoreViewModel by viewModels()
+    private val vm: PhoneViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

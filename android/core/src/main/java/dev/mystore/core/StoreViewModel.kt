@@ -1,4 +1,4 @@
-package dev.mystore.mobile
+package dev.mystore.core
 
 import android.app.Application
 import android.graphics.BitmapFactory
@@ -10,7 +10,6 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import dev.mystore.core.*
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
@@ -21,7 +20,8 @@ sealed interface Screen {
     data object Settings : Screen
 }
 
-class StoreViewModel(app: Application) : AndroidViewModel(app) {
+// Lógica común de las apps tienda; `type` es "phone" o "watch"
+open class StoreViewModel(app: Application, private val type: String) : AndroidViewModel(app) {
     val installer = Installer(app)
     private val settings = StoreSettings(app)
     private var client: StoreClient? = null
@@ -58,7 +58,7 @@ class StoreViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             loading = true
             try {
-                apps = c.apps("phone")
+                apps = c.apps(type)
                 error = null
                 refreshInstalled()
             } catch (e: StoreException) {
@@ -74,7 +74,7 @@ class StoreViewModel(app: Application) : AndroidViewModel(app) {
         val url = normalizeStoreUrl(input) ?: return "Escribe una URL válida (http:// o https://)"
         val c = StoreClient(url)
         return try {
-            apps = c.apps("phone")
+            apps = c.apps(type)
             settings.storeUrl = url
             client = c
             icons.clear()
