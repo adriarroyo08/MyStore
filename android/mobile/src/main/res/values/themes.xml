@@ -1,3 +1,5 @@
 <resources>
-    <style name="Theme.MyStore" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.MyStore" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">#F8F9FF</item>
+    </style>
 </resources>

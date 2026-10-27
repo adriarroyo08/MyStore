@@ -53,3 +53,7 @@ fun List<StoreApp>.search(q: String): List<StoreApp> {
     val n = fold(q.trim())
     return filter { fold(it.label).contains(n) || fold(it.pkg).contains(n) }
 }
+
+// Primera línea no vacía de la descripción, para subtítulos de una línea
+val StoreApp.summary: String
+    get() = description.lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() }.orEmpty()

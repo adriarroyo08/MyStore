@@ -12,6 +12,12 @@ class ModelsTest {
         assertEquals(AppAction.OPEN, actionFor(5, 6))
     }
 
+    @Test fun summaryIsFirstNonBlankLine() {
+        val a = StoreApp("i", "p", "phone", "L", 1, "1", 0, "\n  Hola mundo \nmás", "", "", "")
+        assertEquals("Hola mundo", a.summary)
+        assertEquals("", a.copy(description = "").summary)
+    }
+
     @Test fun normalizesUrls() {
         assertEquals("https://tienda.com", normalizeStoreUrl("tienda.com/"))
         assertEquals("http://192.168.1.2:8080", normalizeStoreUrl("http://192.168.1.2:8080"))
