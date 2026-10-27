@@ -17,6 +17,17 @@ jobs:
       - run: go vet ./...
       - run: go test ./...
 
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
+      - run: cd android && ./gradlew :core:testDebugUnitTest assembleDebug
+
   docker-and-action:
     runs-on: ubuntu-latest
     steps:

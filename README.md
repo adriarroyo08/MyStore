@@ -5,7 +5,7 @@ Tu propia "Play Store" personal, open source y autoalojada. Sube tus APKs desde 
 - **Servidor** (Go, un solo binario en Docker): guarda tus APKs y lee de cada una el nombre, la versión, el icono y si es una app de reloj.
 - **Web de administración**: arrastra tus APKs y gestiona la lista.
 - **GitHub Action**: sube la APK automáticamente en cada release.
-- **Apps tienda para móvil y reloj**: llegan en la Fase 2.
+- **Apps tienda para móvil y reloj**: se compilan desde `android/` (ver más abajo).
 
 Cada persona monta su propia tienda; no hay cuentas ni registro.
 
@@ -81,18 +81,55 @@ curl -H "Authorization: Bearer $MYSTORE_TOKEN" -F apk=@app-release.apk -F notes=
 
 El `id` es `<package>-phone` o `<package>-watch`. Los errores devuelven `{"error": "..."}`.
 
-## Primera instalación de la app tienda
+## Apps tienda (móvil y reloj)
 
-Las apps tienda (Fase 2) se actualizan solas desde tu tienda, pero la primera vez hay que instalarlas:
+### Compilar
 
-- **Móvil:** abre la web de tu tienda en el móvil, pulsa *Descargar* en la app tienda y permite "instalar apps desconocidas".
-- **Reloj:** el reloj no tiene navegador, así que se instala una vez con adb por WiFi. En el reloj: *Ajustes → Opciones de desarrollador → Depuración inalámbrica → Vincular dispositivo nuevo*. En el ordenador:
+Necesitas JDK 17 y el SDK de Android.
+
+```bash
+cd android
+./gradlew assembleDebug     # APKs en android/mobile/build/outputs/apk/debug y android/wear/build/outputs/apk/debug
+```
+
+Opcional: `-PversionCode=2 -PversionName=1.1` (iguales para móvil y reloj; usa siempre un versionCode creciente).
+
+### Firma propia (necesaria para que se autoactualicen)
+
+Android solo actualiza una app si la nueva APK lleva la misma firma. Crea tu clave una vez y guárdala bien:
+
+```bash
+keytool -genkeypair -v -keystore mystore.jks -alias mystore -keyalg RSA -keysize 2048 -validity 36500
+```
+
+Crea `android/keystore.properties` (está en .gitignore, igual que `*.jks`):
+
+```
+storeFile=../mystore.jks
+storePassword=...
+keyAlias=mystore
+keyPassword=...
+```
+
+Las builds debug y release usan esa clave. Sin el fichero se usa la clave debug por defecto, que vale para probar pero no para compartir entre equipos.
+
+### Primera instalación
+
+- **Móvil:** sube la APK del móvil a tu tienda, abre su web en el móvil, pulsa *Descargar* y permite "instalar apps desconocidas".
+- **Reloj:** no tiene navegador, así que se instala una vez con adb por WiFi. En el reloj: *Ajustes → Opciones de desarrollador → Depuración inalámbrica → Vincular dispositivo nuevo*. En el ordenador:
 
   ```bash
   adb pair <ip>:<puerto-de-vinculación>    # pide el código que muestra el reloj
   adb connect <ip>:<puerto>
-  adb install mystore-wear.apk
+  adb install android/wear/build/outputs/apk/debug/wear-debug.apk
   ```
+
+- **URL de la tienda en el reloj:** al abrir la app por primera vez, escribe la URL en el campo de la propia app; en el teclado del sistema, la flecha de enviar confirma el texto.
+- Después, ambas apps se actualizan desde tu tienda como cualquier otra (firmadas con tu clave).
+
+### Capturas de pantalla
+
+En la web de administración puedes subir capturas a cada app (PNG/JPEG). Se muestran en la ficha de detalle de las apps tienda, junto con la descripción, como en Play Store. Por API: `POST /api/apps/{id}/screenshots` (campo `image`, con token).
 
 ## Desarrollo
 

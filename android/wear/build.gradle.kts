@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
@@ -10,8 +12,24 @@ android {
         applicationId = "dev.mystore"
         minSdk = 30
         targetSdk = 35
-        versionCode = (System.getenv("VERSION_CODE") ?: "1").toInt()
-        versionName = "1.0.0"
+        versionCode = (findProperty("versionCode") as String? ?: "1").toInt()
+        versionName = findProperty("versionName") as String? ?: "1.0"
+    }
+    // Misma firma en debug y release para que la app se autoactualice.
+    // Sin keystore.properties se usa la clave debug por defecto.
+    val ksFile = rootProject.file("keystore.properties")
+    if (ksFile.exists()) {
+        val ks = Properties()
+        ksFile.inputStream().use { ks.load(it) }
+        signingConfigs.create("store") {
+            storeFile = rootProject.file(ks.getProperty("storeFile"))
+            storePassword = ks.getProperty("storePassword")
+            keyAlias = ks.getProperty("keyAlias")
+            keyPassword = ks.getProperty("keyPassword")
+        }
+        buildTypes.all { signingConfig = signingConfigs.getByName("store") }
+    } else {
+        buildTypes.all { signingConfig = signingConfigs.getByName("debug") }
     }
     buildFeatures { compose = true }
     lint { abortOnError = false }

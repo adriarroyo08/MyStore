@@ -1,3 +1,6 @@
 .superpowers/
 data/
 server/tmp/
+android/keystore.properties
+*.jks
+!server/testdata/keys/*.jks
