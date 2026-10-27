@@ -26,7 +26,8 @@ Dispositivos del autor: móvil Android y **TicWatch Pro 5 Enduro** (Wear OS). Se
 ## No objetivos (v1)
 
 - Servicio multiusuario o tienda pública: **cada persona monta su propia instancia** (decidido por el usuario). No hay cuentas ni registro.
-- Pagos, reseñas, valoraciones, capturas de pantalla.
+- Pagos, reseñas y valoraciones.
+- (Cambio del 2026-10-27, decidido por el usuario: las **capturas de pantalla** pasan a ser objetivo; ver "Ficha tipo Play Store".)
 - Historial de versiones / volver a una versión anterior: el servidor solo ofrece la última versión de cada app.
 - Avisos de actualización en segundo plano: las actualizaciones se ven al abrir la tienda.
 - Firmar APKs o compilar código: la tienda recibe APKs ya firmadas.
@@ -95,3 +96,11 @@ No está confirmado que Wear OS (en el TicWatch Pro 5 Enduro) permita a una app 
 - Aspecto visual concreto, siguiendo el estilo de Material 3 y los bocetos.
 - Tamaño máximo de subida y límites razonables.
 - Pruebas: las mínimas que protejan la lectura de APKs, la comparación de versiones y la autenticación.
+
+## Ficha tipo Play Store (añadido 2026-10-27)
+
+Pedido por el usuario: "que sea navegable, que permita retroceder, que ponga descripción de la app, fotos, etc. como en Play Store".
+
+- Capturas por app (hasta 8), subidas desde la web de administración; se conservan entre versiones.
+- Móvil: ficha con cabecera (icono, nombre, versión, tamaño, botón), carrusel de capturas con visor a pantalla completa, "Acerca de esta app" (descripción), "Novedades" (notas) y fecha de actualización. Atrás con flecha y con el gesto del sistema en todas las pantallas.
+- Reloj: ficha desplazable con descripción, capturas y novedades; atrás deslizando a la derecha.

@@ -190,3 +190,22 @@ Pantallas (boceto del reloj):
 - [ ] **Step 3: CI + README** (cómo compilar las apps, primera instalación, la URL en el reloj).
 - [ ] **Step 4: Run** `./gradlew :core:testDebugUnitTest assembleDebug` y `cd server && go test ./...` → todo verde.
 - [ ] **Step 5: Commit** `feat: store self-update, Android CI and docs`
+
+---
+
+## Ampliación: ficha tipo Play Store (pedida por el usuario a mitad de fase)
+
+Contrato de API nuevo (lo usan las Tasks 7 y 8):
+- `App` JSON gana `"screenshots": ["/api/apps/{id}/screenshots/{n}", ...]` (siempre presente, `[]` si no hay), en el orden de subida.
+- `POST /api/apps/{id}/screenshots` (token, multipart campo `image`, PNG/JPEG/WebP ≤ 5 MB y ≤ 4096 px por lado) → `201` App. `409` si ya hay 8. `400` si no es imagen válida.
+- `DELETE /api/apps/{id}/screenshots/{n}` (token) → `200` App.
+- `GET /api/apps/{id}/screenshots/{n}` público, con el `Content-Type` real.
+- Al subir una versión nueva de la app, las capturas se conservan; al borrar la app, se borran.
+
+### Task 7: Capturas en servidor y web
+**Files:** `server/store.go`, `server/api.go`, `server/web/index.html` y sus tests.
+Tests: subir/listar/servir/borrar captura; límite de 8 → 409; fichero no imagen → 400; sin token → 401; capturas conservadas tras subir v2; `n` fuera de rango o manipulado → 404. Web: en "Editar", miniaturas de las capturas con botón quitar y zona para añadir.
+
+### Task 8: Ficha tipo Play Store y navegación en las apps
+**Files:** `android/core` (modelo `screenshots: List<String>` absolutas, `updatedAt`), `android/mobile`, `android/wear`.
+Móvil: barra superior con flecha atrás en ficha y ajustes; `BackHandler` en todas las pantallas (visor → ficha → lista); ficha como en Global Constraints de la spec ampliada; visor de capturas a pantalla completa deslizable. Reloj: `SwipeToDismissBox` (o equivalente) para volver; ficha desplazable con descripción, capturas y novedades; `TimeText` sin solapar el título. Test JVM: `parseApps` lee `screenshots` y las hace absolutas.
