@@ -30,7 +30,10 @@ func shotIndex(r *http.Request) int {
 	return n
 }
 
-const maxShotBytes = 5 << 20
+const (
+	maxShotBytes = 5 << 20
+	maxIconBytes = 2 << 20
+)
 
 //go:embed web/index.html
 var adminPage []byte
@@ -67,7 +70,7 @@ func storeError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusNotFound, err.Error())
 	case errors.Is(err, ErrInvalidAPK):
 		writeError(w, http.StatusBadRequest, ErrInvalidAPK.Error())
-	case errors.Is(err, ErrBadImage):
+	case errors.Is(err, ErrBadImage), errors.Is(err, ErrBadIcon):
 		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, ErrNotNewer), errors.Is(err, ErrCertMismatch), errors.Is(err, ErrTooManyShots):
 		writeError(w, http.StatusConflict, err.Error())
@@ -266,6 +269,41 @@ func NewHandler(s *Store, token string, maxUploadBytes int64) http.Handler {
 
 	mux.HandleFunc("DELETE /api/apps/{id}/screenshots/{n}", auth(func(w http.ResponseWriter, r *http.Request) {
 		a, err := s.RemoveShot(r.PathValue("id"), shotIndex(r))
+		if err != nil {
+			storeError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, withURLs(a))
+	}))
+
+	mux.HandleFunc("PUT /api/apps/{id}/icon", auth(func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, maxIconBytes+64<<10)
+		if err := r.ParseMultipartForm(1 << 20); err != nil {
+			var tooBig *http.MaxBytesError
+			if errors.As(err, &tooBig) {
+				writeError(w, http.StatusRequestEntityTooLarge, "el icono supera los 2 MB")
+			} else {
+				writeError(w, http.StatusBadRequest, "se esperaba un formulario multipart con el campo image")
+			}
+			return
+		}
+		defer r.MultipartForm.RemoveAll()
+		f, _, err := r.FormFile("image")
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "falta el campo image")
+			return
+		}
+		defer f.Close()
+		data, err := io.ReadAll(io.LimitReader(f, maxIconBytes+1))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "subida incompleta o mal formada")
+			return
+		}
+		if len(data) > maxIconBytes {
+			writeError(w, http.StatusRequestEntityTooLarge, "el icono supera los 2 MB")
+			return
+		}
+		a, err := s.SetIcon(r.PathValue("id"), data)
 		if err != nil {
 			storeError(w, err)
 			return

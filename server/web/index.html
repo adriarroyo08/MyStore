@@ -188,8 +188,24 @@ function appRow(a) {
     shotDrop.ondragover = (e) => { e.preventDefault(); shotDrop.classList.add("over"); };
     shotDrop.ondragleave = () => shotDrop.classList.remove("over");
     shotDrop.ondrop = (e) => { e.preventDefault(); shotDrop.classList.remove("over"); addShots([...e.dataTransfer.files]); };
+    const iconImg = el("img", { src: a.iconUrl + "?" + Date.now(), alt: "", width: 48, height: 48 });
+    const iconMsg = el("div", { className: "msg" });
+    const iconFile = el("input", { type: "file", accept: "image/png,image/jpeg,image/webp" });
+    iconFile.onchange = async () => {
+      const f = iconFile.files[0]; iconFile.value = "";
+      if (!f) return;
+      const form = new FormData();
+      form.append("image", f);
+      iconMsg.className = "msg";
+      try {
+        const res = await fetch(`/api/apps/${a.id}/icon`, { method: "PUT", headers: auth(), body: form });
+        if (res.ok) { iconImg.src = a.iconUrl + "?" + Date.now(); iconMsg.className = "msg ok"; iconMsg.textContent = "Icono cambiado"; }
+        else { iconMsg.className = "msg err"; iconMsg.textContent = await apiError(res); }
+      } catch { iconMsg.className = "msg err"; iconMsg.textContent = "error de red"; }
+    };
     showShots(a.screenshots || []);
-    editor = el("div", { className: "edit" }, desc, notes, shotsBox, shotDrop, shotFile, shotMsg,
+    editor = el("div", { className: "edit" }, desc, notes,
+      el("div", {}, "Cambiar icono: ", iconImg, " ", iconFile), iconMsg, shotsBox, shotDrop, shotFile, shotMsg,
       el("div", {}, el("button", { textContent: "Guardar", onclick: async () => {
         const res = await fetch("/api/apps/" + a.id, {
           method: "PATCH", headers: { ...auth(), "Content-Type": "application/json" },

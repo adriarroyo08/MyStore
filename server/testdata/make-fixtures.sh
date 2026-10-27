@@ -33,6 +33,7 @@ build phone-v2.apk phone.xml 2 2.0 a res
 build phone-v2-otherkey.apk phone.xml 2 2.0 b res
 build watch-v1.apk watch.xml 1 1.0 a res
 build noicon-v1.apk noicon.xml 1 1.0 a
+build noicon-v2.apk noicon.xml 2 2.0 a
 build adaptive-v1.apk adaptive.xml 1 1.0 a res-adaptive
 build badvector-v1.apk badvector.xml 1 1.0 a res-badvector
 head -c 1024 /dev/zero | tr '\0' 'x' > not-an-apk.apk

@@ -308,3 +308,77 @@ func TestScreenshotsSurviveUpgradeAndDelete(t *testing.T) {
 		t.Error("app dir survived delete")
 	}
 }
+
+func putIcon(t *testing.T, srv *httptest.Server, token, id string, data []byte) *http.Response {
+	t.Helper()
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	fw, _ := w.CreateFormFile("image", "icon.png")
+	fw.Write(data)
+	w.Close()
+	return do(t, "PUT", srv.URL+"/api/apps/"+id+"/icon", token, &buf, w.FormDataContentType())
+}
+
+func TestCustomIcon(t *testing.T) {
+	srv, _ := newTestServer(t, 1<<20)
+	const id = "com.example.noicon-phone"
+	upload(t, srv, testToken, "noicon-v1.apk")
+	if res := putIcon(t, srv, "", id, pngBytes(8, 8)); res.StatusCode != 401 {
+		t.Errorf("sin token: %d", res.StatusCode)
+	}
+	res := putIcon(t, srv, testToken, id, pngBytes(300, 200))
+	var a map[string]any
+	json.NewDecoder(res.Body).Decode(&a)
+	if res.StatusCode != 200 || a["hasIcon"] != true {
+		t.Fatalf("put: %d %v", res.StatusCode, a)
+	}
+	get := do(t, "GET", srv.URL+"/api/apps/"+id+"/icon", "", nil, "")
+	body, _ := io.ReadAll(get.Body)
+	cfg, err := png.DecodeConfig(bytes.NewReader(body))
+	if err != nil || cfg.Width != iconSize || cfg.Height != iconSize {
+		t.Fatalf("icono servido: %v %+v", err, cfg)
+	}
+	if bytes.Equal(body, genericIcon) {
+		t.Error("sirve el icono genérico")
+	}
+	// una APK nueva sin icono conserva el personalizado
+	if res := upload(t, srv, testToken, "noicon-v2.apk"); res.StatusCode != 201 {
+		t.Fatalf("v2: %d", res.StatusCode)
+	}
+	if apps := listApps(t, srv, ""); apps[0]["hasIcon"] != true {
+		t.Error("hasIcon perdido tras subir v2")
+	}
+	get = do(t, "GET", srv.URL+"/api/apps/"+id+"/icon", "", nil, "")
+	if again, _ := io.ReadAll(get.Body); !bytes.Equal(again, body) {
+		t.Error("icono distinto tras subir v2")
+	}
+}
+
+func TestCustomIconErrors(t *testing.T) {
+	srv, _ := newTestServer(t, 1<<20)
+	upload(t, srv, testToken, "noicon-v1.apk")
+	const id = "com.example.noicon-phone"
+	for name, data := range map[string][]byte{"basura": []byte("nope"), "enorme": pngBytes(4097, 1)} {
+		if res := putIcon(t, srv, testToken, id, data); res.StatusCode != 400 || errorMessage(t, res) == "" {
+			t.Errorf("%s: %d", name, res.StatusCode)
+		}
+	}
+	if res := putIcon(t, srv, testToken, id, append(pngBytes(8, 8), make([]byte, 2<<20)...)); res.StatusCode != 413 {
+		t.Errorf("grande: %d", res.StatusCode)
+	}
+	if res := putIcon(t, srv, testToken, "com.example.nope-phone", pngBytes(8, 8)); res.StatusCode != 404 {
+		t.Errorf("desconocida: %d", res.StatusCode)
+	}
+}
+
+func TestApkIconWinsOverCustom(t *testing.T) {
+	srv, _ := newTestServer(t, 1<<20)
+	const id = "com.example.demo-phone"
+	upload(t, srv, testToken, "phone-v1.apk")
+	putIcon(t, srv, testToken, id, pngBytes(8, 8))
+	upload(t, srv, testToken, "phone-v2.apk")
+	apps := listApps(t, srv, "")
+	if apps[0]["customIcon"] == true {
+		t.Error("customIcon no se limpió")
+	}
+}

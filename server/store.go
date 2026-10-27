@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"image/png"
 	"io"
 	"os"
 	"path/filepath"
@@ -14,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/image/draw"
 )
 
 var (
@@ -21,6 +24,7 @@ var (
 	ErrNotNewer     = errors.New("ya hay una versión igual o más nueva de esta app")
 	ErrCertMismatch = errors.New("la APK está firmada con otra clave; borra la app si quieres cambiar de firma")
 	ErrBadImage     = errors.New("la captura no es una imagen PNG, JPEG o WebP válida de hasta 4096 px por lado")
+	ErrBadIcon      = errors.New("el icono no es una imagen PNG, JPEG o WebP válida de hasta 4096 px por lado")
 	ErrTooManyShots = errors.New("ya hay 8 capturas; quita alguna antes de añadir otra")
 )
 
@@ -32,6 +36,7 @@ type App struct {
 	Description string    `json:"description"`
 	Notes       string    `json:"notes"`
 	HasIcon     bool      `json:"hasIcon"`
+	CustomIcon  bool      `json:"customIcon"` // icon.png lo subió el admin, no viene de la APK
 	Shots       []string  `json:"shots"` // nombres de fichero en shots/, en orden de subida
 	UpdatedAt   time.Time `json:"updatedAt"`
 }
@@ -144,6 +149,9 @@ func (s *Store) Put(tmpAPK, notes, description string) (App, error) {
 			a.Description = old.Description
 		}
 		a.Shots = old.Shots
+		if icon == nil && old.CustomIcon { // la APK nueva no trae icono: se conserva el personalizado
+			a.HasIcon, a.CustomIcon = true, true
+		}
 	case !errors.Is(err, ErrNotFound):
 		return App{}, err
 	}
@@ -159,6 +167,11 @@ func (s *Store) Put(tmpAPK, notes, description string) (App, error) {
 	}
 	if icon != nil {
 		if err := os.WriteFile(filepath.Join(tmp, "icon.png"), icon, 0o644); err != nil {
+			return App{}, err
+		}
+	}
+	if a.CustomIcon {
+		if err := copyFile(filepath.Join(dest, "icon.png"), filepath.Join(tmp, "icon.png")); err != nil {
 			return App{}, err
 		}
 	}
@@ -221,6 +234,41 @@ func (s *Store) IconPath(id string) (string, bool, error) {
 	}
 	d, _ := s.dir(id)
 	return filepath.Join(d, "icon.png"), a.HasIcon, nil
+}
+
+// SetIcon sustituye el icono de la app por data (PNG/JPEG/WebP), recortado a cuadrado y
+// escalado a iconSize como los iconos de APK.
+func (s *Store) SetIcon(id string, data []byte) (App, error) {
+	img, err := decodeBitmap(data)
+	if err != nil || img.Bounds().Empty() {
+		return App{}, ErrBadIcon
+	}
+	b := img.Bounds()
+	side := min(b.Dx(), b.Dy())
+	src := image.Rect(b.Min.X+(b.Dx()-side)/2, b.Min.Y+(b.Dy()-side)/2, 0, 0)
+	src.Max = src.Min.Add(image.Pt(side, side))
+	dst := image.NewRGBA(image.Rect(0, 0, iconSize, iconSize))
+	draw.CatmullRom.Scale(dst, dst.Bounds(), img, src, draw.Src, nil)
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, dst); err != nil {
+		return App{}, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	a, err := s.Get(id)
+	if err != nil {
+		return App{}, err
+	}
+	d, _ := s.dir(id)
+	tmp := filepath.Join(d, "icon.png.tmp")
+	if err := os.WriteFile(tmp, buf.Bytes(), 0o644); err != nil {
+		return App{}, err
+	}
+	if err := os.Rename(tmp, filepath.Join(d, "icon.png")); err != nil {
+		return App{}, err
+	}
+	a.HasIcon, a.CustomIcon = true, true
+	return a, writeMeta(d, a)
 }
 
 // AddShot valida data como imagen y la añade al final de las capturas de la app.
