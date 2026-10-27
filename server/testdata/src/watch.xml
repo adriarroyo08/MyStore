@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.example.demo">
+    <uses-feature android:name="android.hardware.type.watch" />
+    <application android:label="Demo" android:icon="@mipmap/ic_launcher" android:hasCode="false">
+        <uses-library android:name="com.google.android.wearable" android:required="false" />
+    </application>
+</manifest>

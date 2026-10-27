@@ -1,0 +1,4 @@
+*.apk binary
+*.jks binary
+*.png binary
+*.sh text eol=lf
