@@ -28,6 +28,9 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         UpdateChecks.schedule(this, "phone")
+        // Solo en debug: `am start ... --ez checkNow true` lanza la comprobación de actualizaciones al momento
+        if (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0 &&
+            intent.getBooleanExtra("checkNow", false)) UpdateChecks.checkNow(this, "phone")
         handleIntent(intent)
         askNotificationsOnce()
         setContent {
