@@ -21,6 +21,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         UpdateChecks.schedule(this, "watch")
+        // Solo en debug: `am start ... --ez checkNow true` lanza la comprobación de actualizaciones al momento
+        if (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0 &&
+            intent.getBooleanExtra("checkNow", false)) UpdateChecks.checkNow(this, "watch")
         // EXTRA_SHOW_UPDATES: la lista ya marca las actualizaciones, no hace falta nada más
         setContent {
             MaterialTheme { WearApp(vm, onPermission = { startActivity(vm.installer.permissionIntent()) }) }
