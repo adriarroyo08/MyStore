@@ -30,6 +30,18 @@ var (
 
 const maxShots = 8
 
+// Versiones anteriores que se guardan por app (las APKs pueden pesar más de 1 GB).
+var maxVersions = 3
+
+// Version es una versión anterior de una app; su APK está en versions/<versionCode>.apk.
+type Version struct {
+	VersionCode int64     `json:"versionCode"`
+	VersionName string    `json:"versionName"`
+	Notes       string    `json:"notes"`
+	Size        int64     `json:"size"`
+	UpdatedAt   time.Time `json:"updatedAt"`
+}
+
 type App struct {
 	Meta
 	ID          string    `json:"id"`
@@ -38,6 +50,7 @@ type App struct {
 	HasIcon     bool      `json:"hasIcon"`
 	CustomIcon  bool      `json:"customIcon"` // icon.png lo subió el admin, no viene de la APK
 	Shots       []string  `json:"shots"` // nombres de fichero en shots/, en orden de subida
+	Versions    []Version `json:"versions"` // anteriores, de la más nueva a la más vieja
 	UpdatedAt   time.Time `json:"updatedAt"`
 }
 
@@ -149,6 +162,9 @@ func (s *Store) Put(tmpAPK, notes, description string) (App, error) {
 			a.Description = old.Description
 		}
 		a.Shots = old.Shots
+		prev := Version{old.VersionCode, old.VersionName, old.Notes, old.Size, old.UpdatedAt}
+		a.Versions = append([]Version{prev}, old.Versions...)
+		a.Versions = a.Versions[:min(len(a.Versions), maxVersions)]
 		if icon == nil && old.CustomIcon { // la APK nueva no trae icono: se conserva el personalizado
 			a.HasIcon, a.CustomIcon = true, true
 		}
@@ -181,6 +197,20 @@ func (s *Store) Put(tmpAPK, notes, description string) (App, error) {
 		}
 		for _, f := range a.Shots {
 			if err := copyFile(filepath.Join(dest, "shots", f), filepath.Join(tmp, "shots", f)); err != nil {
+				return App{}, err
+			}
+		}
+	}
+	if len(a.Versions) > 0 { // enlaces duros: no se copian GB y el directorio viejo sigue intacto si algo falla
+		if err := os.Mkdir(filepath.Join(tmp, "versions"), 0o755); err != nil {
+			return App{}, err
+		}
+		for i, v := range a.Versions {
+			src := filepath.Join(dest, "versions", fmt.Sprintf("%d.apk", v.VersionCode))
+			if i == 0 {
+				src = filepath.Join(dest, "app.apk")
+			}
+			if err := linkFile(src, filepath.Join(tmp, "versions", fmt.Sprintf("%d.apk", v.VersionCode))); err != nil {
 				return App{}, err
 			}
 		}
@@ -224,6 +254,21 @@ func (s *Store) APKPath(id string) (string, error) {
 	}
 	d, _ := s.dir(id)
 	return filepath.Join(d, "app.apk"), nil
+}
+
+// VersionAPKPath devuelve la APK de una versión anterior que siga guardada.
+func (s *Store) VersionAPKPath(id string, code int64) (Version, string, error) {
+	a, err := s.Get(id)
+	if err != nil {
+		return Version{}, "", err
+	}
+	for _, v := range a.Versions {
+		if v.VersionCode == code {
+			d, _ := s.dir(id)
+			return v, filepath.Join(d, "versions", fmt.Sprintf("%d.apk", code)), nil
+		}
+	}
+	return Version{}, "", ErrNotFound
 }
 
 // IconPath devuelve la ruta del icono y si la app tiene uno.
@@ -352,6 +397,14 @@ func copyFile(src, dst string) error {
 		return err
 	}
 	return out.Close()
+}
+
+// linkFile crea un enlace duro y, si el sistema no lo admite, copia.
+func linkFile(src, dst string) error {
+	if os.Link(src, dst) == nil {
+		return nil
+	}
+	return copyFile(src, dst)
 }
 
 // writeMeta escribe meta.json de forma atómica.

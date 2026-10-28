@@ -37,6 +37,7 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextAlign
@@ -84,6 +85,7 @@ fun DetailScreen(vm: StoreViewModel, app: StoreApp, onPermission: () -> Unit) {
                     }
                 }
             }
+            if (app.versions.isNotEmpty()) Section("Versiones anteriores") { OldVersions(vm, app, onPermission) }
             Section("Información") { InfoCard(app) }
             Spacer(Modifier.navigationBarsPadding().height(32.dp))
         }
@@ -192,6 +194,21 @@ private fun ActionArea(vm: StoreViewModel, app: StoreApp, onPermission: () -> Un
                 }
             }
         }
+        val busy = s is InstallState.Downloading || s is InstallState.Installing
+        val ownPkg = LocalContext.current.packageName == app.pkg
+        if (!busy && (action != AppAction.OPEN && vm.installer.isCached(app) || action != AppAction.INSTALL && !ownPkg)) {
+            Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (action != AppAction.OPEN && vm.installer.isCached(app)) Text(
+                    "Guardada en el dispositivo: no hace falta descargarla",
+                    Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant,
+                ) else Spacer(Modifier.weight(1f))
+                if (action != AppAction.INSTALL && !ownPkg) {
+                    TextButton(onClick = { vm.installer.uninstall(app.pkg) }, colors = ButtonDefaults.textButtonColors(contentColor = cs.error)) {
+                        Text("Desinstalar")
+                    }
+                }
+            }
+        }
         AnimatedVisibility(s is InstallState.Failed) {
             val msg = (s as? InstallState.Failed)?.message.orEmpty()
             Row(Modifier.padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -236,6 +253,41 @@ private fun About(app: StoreApp) {
                 TextButton(onClick = { expanded = !expanded }, contentPadding = PaddingValues(horizontal = 0.dp)) {
                     Text(if (expanded) "Mostrar menos" else "Leer más")
                     Icon(Icons.Rounded.KeyboardArrowDown, null, Modifier.rotate(rot))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun OldVersions(vm: StoreViewModel, app: StoreApp, onPermission: () -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    val installed = vm.installed[app.id]
+    val s = vm.installStates[app.id]
+    val busy = s is InstallState.Downloading || s is InstallState.Installing
+    Surface(shape = MaterialTheme.shapes.large, color = cs.surfaceContainerLow) {
+        Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+            app.versions.forEachIndexed { i, v ->
+                if (i > 0) HorizontalDivider(Modifier.padding(horizontal = 20.dp), color = cs.outlineVariant)
+                Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Versión ${v.versionName}", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            listOfNotNull(fullDate(v.updatedAt), mb(v.size)).joinToString(" · "),
+                            style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant,
+                        )
+                        if (v.notes.isNotBlank()) Text(v.notes, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                        // Android no deja instalar una versión más vieja encima de la nueva
+                        if (installed != null && installed > v.versionCode) Text(
+                            "Desinstala la app para volver a esta versión",
+                            style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant,
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    FilledTonalButton(
+                        onClick = { vm.installVersion(app, v, onPermission) },
+                        enabled = !busy && (installed == null || installed < v.versionCode),
+                    ) { Text(if (installed == v.versionCode) "Instalada" else "Instalar") }
                 }
             }
         }

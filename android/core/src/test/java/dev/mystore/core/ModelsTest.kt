@@ -52,4 +52,18 @@ class ModelsTest {
         assertEquals(listOf(app), listOf(app).search("DEV.CAM"))
         assertEquals(emptyList<StoreApp>(), listOf(app).search("zzz"))
     }
+
+    @Test fun parsesVersionsAndBuildsInstallableCopy() {
+        val j = """[{"id":"a-phone","package":"a","type":"phone","label":"A","versionCode":3,"apkUrl":"/api/apps/a-phone/apk",
+            "versions":[{"versionCode":2,"versionName":"1.1","notes":"n","size":7,"updatedAt":"2026-10-01T10:00:00Z",
+            "apkUrl":"/api/apps/a-phone/versions/2/apk"}]},
+            {"id":"b","package":"b","type":"phone","label":"B","versionCode":1,"versions":null}]"""
+        val (a, b) = parseApps(j, "http://h")
+        val v = a.versions.single()
+        assertEquals(StoreVersion(2, "1.1", "n", 7, "2026-10-01T10:00:00Z", "http://h/api/apps/a-phone/versions/2/apk"), v)
+        assertEquals(emptyList<StoreVersion>(), b.versions)
+        val old = a.asVersion(v)
+        assertEquals(listOf("a-phone", "a", "1.1", "http://h/api/apps/a-phone/versions/2/apk"), listOf(old.id, old.pkg, old.versionName, old.apkUrl))
+        assertEquals(listOf(2L, 7L), listOf(old.versionCode, old.size))
+    }
 }

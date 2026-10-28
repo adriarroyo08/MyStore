@@ -16,6 +16,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // shotIdxRe admite solo 1..999 sin ceros ni signos; lo demás es 404.
@@ -38,11 +39,17 @@ const (
 //go:embed web/index.html
 var adminPage []byte
 
+type versionJSON struct {
+	Version
+	APKURL string `json:"apkUrl"`
+}
+
 type appJSON struct {
 	App
-	IconURL     string   `json:"iconUrl"`
-	APKURL      string   `json:"apkUrl"`
-	Screenshots []string `json:"screenshots"`
+	IconURL     string        `json:"iconUrl"`
+	APKURL      string        `json:"apkUrl"`
+	Screenshots []string      `json:"screenshots"`
+	Versions    []versionJSON `json:"versions"`
 }
 
 func withURLs(a App) appJSON {
@@ -50,7 +57,11 @@ func withURLs(a App) appJSON {
 	for i := range shots {
 		shots[i] = fmt.Sprintf("/api/apps/%s/screenshots/%d", a.ID, i+1)
 	}
-	return appJSON{App: a, IconURL: "/api/apps/" + a.ID + "/icon", APKURL: "/api/apps/" + a.ID + "/apk", Screenshots: shots}
+	vs := make([]versionJSON, len(a.Versions))
+	for i, v := range a.Versions {
+		vs[i] = versionJSON{v, fmt.Sprintf("/api/apps/%s/versions/%d/apk", a.ID, v.VersionCode)}
+	}
+	return appJSON{App: a, IconURL: "/api/apps/" + a.ID + "/icon", APKURL: "/api/apps/" + a.ID + "/apk", Screenshots: shots, Versions: vs}
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -137,6 +148,18 @@ func NewHandler(s *Store, token string, maxUploadBytes int64) http.Handler {
 		http.ServeFile(w, r, path)
 	})
 
+	serveAPK := func(w http.ResponseWriter, r *http.Request, path, pkg, versionName string, mod time.Time) {
+		f, err := os.Open(path)
+		if err != nil {
+			storeError(w, err)
+			return
+		}
+		defer f.Close()
+		w.Header().Set("Content-Type", "application/vnd.android.package-archive")
+		w.Header().Set("Content-Disposition", `attachment; filename="`+pkg+"-"+versionName+`.apk"`)
+		http.ServeContent(w, r, "", mod, f)
+	}
+
 	mux.HandleFunc("GET /api/apps/{id}/apk", func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
 		a, err := s.Get(id)
@@ -149,15 +172,27 @@ func NewHandler(s *Store, token string, maxUploadBytes int64) http.Handler {
 			storeError(w, err)
 			return
 		}
-		f, err := os.Open(path)
+		serveAPK(w, r, path, a.Package, a.VersionName, a.UpdatedAt)
+	})
+
+	mux.HandleFunc("GET /api/apps/{id}/versions/{code}/apk", func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		code, err := strconv.ParseInt(r.PathValue("code"), 10, 64)
+		if err != nil {
+			storeError(w, ErrNotFound)
+			return
+		}
+		a, err := s.Get(id)
 		if err != nil {
 			storeError(w, err)
 			return
 		}
-		defer f.Close()
-		w.Header().Set("Content-Type", "application/vnd.android.package-archive")
-		w.Header().Set("Content-Disposition", `attachment; filename="`+a.Package+"-"+a.VersionName+`.apk"`)
-		http.ServeContent(w, r, "", a.UpdatedAt, f)
+		v, path, err := s.VersionAPKPath(id, code)
+		if err != nil {
+			storeError(w, err)
+			return
+		}
+		serveAPK(w, r, path, a.Package, v.VersionName, v.UpdatedAt)
 	})
 
 	mux.HandleFunc("POST /api/apps", auth(func(w http.ResponseWriter, r *http.Request) {

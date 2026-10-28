@@ -11,7 +11,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.io.IOException
+import java.io.InputStream
+import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -33,6 +36,25 @@ class Installer(private val context: Context) {
         context.packageManager.getPackageInfo(pkg, 0).longVersionCode
     } catch (e: PackageManager.NameNotFoundException) {
         null
+    }
+
+    // APKs descargadas, una por app (la última), para reinstalar sin volver a bajarla
+    private val apkDir = File(context.filesDir, "apks")
+
+    private fun cacheFile(app: StoreApp) = File(apkDir, "${app.id}-${app.versionCode}.apk")
+
+    fun isCached(app: StoreApp): Boolean = app.size > 0 && cacheFile(app).length() == app.size
+
+    fun cacheBytes(): Long = apkDir.listFiles()?.sumOf { it.length() } ?: 0
+
+    fun clearCache() {
+        apkDir.listFiles()?.forEach { it.delete() }
+        _ticks.value++
+    }
+
+    // El sistema pide confirmación; al volver, onResume → refresh() recalcula los botones
+    fun uninstall(pkg: String) {
+        context.startActivity(Intent(Intent.ACTION_DELETE, Uri.parse("package:$pkg")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
     fun canInstall(): Boolean = context.packageManager.canRequestPackageInstalls()
@@ -117,33 +139,56 @@ class Installer(private val context: Context) {
         setInstallState(appId, InstallState.Idle)
     }
 
-    // El cuerpo HTTP va directo a la sesión, sin copia temporal en disco
+    // Si ya está guardada se instala desde el disco; si no, el cuerpo HTTP va a la sesión y a la vez
+    // a apks/, sustituyendo la copia anterior de esa app
     private fun download(app: StoreApp, session: PackageInstaller.Session) {
+        val cached = cacheFile(app)
+        if (isCached(app)) {
+            cached.inputStream().use { copyToSession(app, it, session, null) }
+            return
+        }
+        val part = File(apkDir, cached.name + ".part")
         val c = URL(app.apkUrl).openConnection() as HttpURLConnection
         c.connectTimeout = 10_000
         c.readTimeout = 30_000
         try {
             if (c.responseCode !in 200..299) throw IOException("HTTP ${c.responseCode}")
-            var done = 0L
-            c.inputStream.use { input ->
-                session.openWrite("base.apk", 0, app.size).use { out ->
-                    val buf = ByteArray(64 * 1024)
-                    while (true) {
-                        val n = input.read(buf)
-                        if (n < 0) break
-                        out.write(buf, 0, n)
-                        done += n
-                        if (app.size > 0) {
-                            setInstallState(app.id, InstallState.Downloading((done.toFloat() / app.size).coerceAtMost(1f)))
-                        }
-                    }
-                    if (done != app.size) throw IOException("La descarga se cortó; inténtalo de nuevo")
-                    session.fsync(out)
-                }
+            val cache = try { apkDir.mkdirs(); part.outputStream() } catch (e: IOException) { null }
+            val kept = try {
+                c.inputStream.use { copyToSession(app, it, session, cache) }
+            } finally {
+                cache?.close() // ya cerrado si fue bien; aquí por si la red falló a medias
+            }
+            if (kept) {
+                apkDir.listFiles()?.filter { it.name.startsWith("${app.id}-") && it != part }?.forEach { it.delete() }
+                part.renameTo(cached)
             }
         } finally {
+            part.delete() // si no se renombró, era una descarga a medias
             c.disconnect()
         }
+    }
+
+    // Devuelve si la copia en caché quedó completa; un fallo al guardarla (disco lleno) no para la instalación
+    private fun copyToSession(app: StoreApp, input: InputStream, session: PackageInstaller.Session, cache: OutputStream?): Boolean {
+        var copy = cache
+        var done = 0L
+        session.openWrite("base.apk", 0, app.size).use { out ->
+            val buf = ByteArray(64 * 1024)
+            while (true) {
+                val n = input.read(buf)
+                if (n < 0) break
+                out.write(buf, 0, n)
+                copy?.let { try { it.write(buf, 0, n) } catch (e: IOException) { runCatching { it.close() }; copy = null } }
+                done += n
+                if (app.size > 0) {
+                    setInstallState(app.id, InstallState.Downloading((done.toFloat() / app.size).coerceAtMost(1f)))
+                }
+            }
+            if (done != app.size) throw IOException("La descarga se cortó; inténtalo de nuevo")
+            session.fsync(out)
+        }
+        return copy?.let { try { it.close(); true } catch (e: IOException) { false } } ?: false
     }
 
     private fun commit(app: StoreApp, session: PackageInstaller.Session, id: Int) {

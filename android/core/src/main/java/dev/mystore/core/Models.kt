@@ -9,6 +9,18 @@ data class StoreApp(
     val versionCode: Long, val versionName: String, val size: Long, val description: String,
     val notes: String, val iconUrl: String, val apkUrl: String, // URLs ya absolutas
     val screenshots: List<String> = emptyList(), val updatedAt: String = "",
+    val versions: List<StoreVersion> = emptyList(), // anteriores, de la más nueva a la más vieja
+)
+
+data class StoreVersion(
+    val versionCode: Long, val versionName: String, val notes: String, val size: Long,
+    val updatedAt: String, val apkUrl: String,
+)
+
+// La app tal como era en esa versión, para pasársela al instalador
+fun StoreApp.asVersion(v: StoreVersion) = copy(
+    versionCode = v.versionCode, versionName = v.versionName, notes = v.notes, size = v.size,
+    updatedAt = v.updatedAt, apkUrl = v.apkUrl, versions = emptyList(),
 )
 
 enum class AppAction { INSTALL, UPDATE, OPEN }
@@ -42,6 +54,15 @@ fun parseApps(json: String, baseUrl: String): List<StoreApp> {
             iconUrl = baseUrl + o.optString("iconUrl"), apkUrl = baseUrl + o.optString("apkUrl"),
             updatedAt = o.optString("updatedAt"),
             screenshots = o.optJSONArray("screenshots")?.let { a -> (0 until a.length()).map { i -> baseUrl + a.getString(i) } }.orEmpty(),
+            versions = o.optJSONArray("versions")?.let { a ->
+                (0 until a.length()).map { i ->
+                    val v = a.getJSONObject(i)
+                    StoreVersion(
+                        v.getLong("versionCode"), v.optString("versionName"), v.optString("notes"), v.optLong("size"),
+                        v.optString("updatedAt"), baseUrl + v.optString("apkUrl"),
+                    )
+                }
+            }.orEmpty(),
         )
     }
 }

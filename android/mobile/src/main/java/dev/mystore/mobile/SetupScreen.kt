@@ -163,6 +163,17 @@ fun SettingsScreen(vm: StoreViewModel) {
                 KeyValue("Instaladas", "$installed")
                 KeyValue("Versión de MyStore", version)
             }
+            Group("Almacenamiento") {
+                // Se relee al borrar: installed cambia con installer.ticks
+                val bytes = remember(vm.installed) { vm.installer.cacheBytes() }
+                KeyValue("APKs guardadas", mb(bytes))
+                Text(
+                    "Se guarda la última descarga de cada app para reinstalarla sin volver a bajarla.",
+                    style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(12.dp))
+                OutlinedButton(onClick = { vm.installer.clearCache() }, enabled = bytes > 0) { Text("Borrar APKs guardadas") }
+            }
             Spacer(Modifier.navigationBarsPadding().height(16.dp))
         }
     }

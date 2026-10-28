@@ -382,3 +382,45 @@ func TestApkIconWinsOverCustom(t *testing.T) {
 		t.Error("customIcon no se limpió")
 	}
 }
+
+func TestVersionHistory(t *testing.T) {
+	srv, _ := newTestServer(t, 1<<20)
+	upload(t, srv, testToken, "phone-v1.apk")
+	if res := upload(t, srv, testToken, "phone-v2.apk"); res.StatusCode != 201 {
+		t.Fatalf("v2: %d", res.StatusCode)
+	}
+	apps := listApps(t, srv, "")
+	vs, _ := apps[0]["versions"].([]any)
+	if len(vs) != 1 {
+		t.Fatalf("versions = %v", apps[0]["versions"])
+	}
+	v := vs[0].(map[string]any)
+	if v["versionCode"] != float64(1) || v["apkUrl"] != "/api/apps/com.example.demo-phone/versions/1/apk" || v["notes"] != "notas" {
+		t.Errorf("version = %v", v)
+	}
+	res := do(t, "GET", srv.URL+"/api/apps/com.example.demo-phone/versions/1/apk", "", nil, "")
+	got, _ := io.ReadAll(res.Body)
+	want, _ := os.ReadFile("testdata/phone-v1.apk")
+	if res.StatusCode != 200 || !bytes.Equal(got, want) {
+		t.Errorf("old apk: status %d, %d bytes", res.StatusCode, len(got))
+	}
+	for _, p := range []string{"versions/2/apk", "versions/9/apk", "versions/x/apk"} {
+		if res := do(t, "GET", srv.URL+"/api/apps/com.example.demo-phone/"+p, "", nil, ""); res.StatusCode != 404 {
+			t.Errorf("%s: %d", p, res.StatusCode)
+		}
+	}
+}
+
+func TestVersionHistoryIsCapped(t *testing.T) {
+	defer func(n int) { maxVersions = n }(maxVersions)
+	maxVersions = 0
+	srv, s := newTestServer(t, 1<<20)
+	upload(t, srv, testToken, "phone-v1.apk")
+	upload(t, srv, testToken, "phone-v2.apk")
+	if a, _ := s.Get("com.example.demo-phone"); len(a.Versions) != 0 {
+		t.Errorf("versions = %v", a.Versions)
+	}
+	if _, err := os.Stat(filepath.Join(s.apps, "com.example.demo-phone", "versions", "1.apk")); err == nil {
+		t.Error("old apk kept beyond the cap")
+	}
+}

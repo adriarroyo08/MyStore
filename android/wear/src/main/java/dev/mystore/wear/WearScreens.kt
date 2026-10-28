@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -93,6 +94,15 @@ private fun SetupScreen(vm: StoreViewModel, onBack: (() -> Unit)?) {
         if (onBack != null) item {
             Chip(onClick = onBack, label = { Text("Cancelar") }, colors = ChipDefaults.secondaryChipColors(), modifier = Modifier.fillMaxWidth())
         }
+        if (onBack != null) item {
+            val bytes = remember(vm.installed) { vm.installer.cacheBytes() }
+            Chip(
+                onClick = { vm.installer.clearCache() }, enabled = bytes > 0,
+                label = { Text("Borrar APKs guardadas") },
+                secondaryLabel = { Text(String.format(Locale.getDefault(), "%.1f MB", bytes / 1048576.0)) },
+                colors = ChipDefaults.secondaryChipColors(), modifier = Modifier.fillMaxWidth(),
+            )
+        }
     }
 }
 
@@ -144,6 +154,7 @@ private fun DetailScreen(vm: StoreViewModel, app: StoreApp, onPermission: () -> 
         AppAction.UPDATE -> "Actualizar"
         AppAction.OPEN -> "Abrir"
     }
+    val ownPkg = LocalContext.current.packageName
     val state = rememberScalingLazyListState()
     Scaffold(timeText = { TimeText() }, positionIndicator = { PositionIndicator(state) }) {
     ScalingLazyColumn(Modifier.fillMaxSize(), state = state, horizontalAlignment = Alignment.CenterHorizontally, contentPadding = PaddingValues(top = 44.dp, bottom = 32.dp)) {
@@ -171,6 +182,13 @@ private fun DetailScreen(vm: StoreViewModel, app: StoreApp, onPermission: () -> 
         if (s is InstallState.Failed) item {
             Text(s.message, color = MaterialTheme.colors.error, textAlign = TextAlign.Center, style = MaterialTheme.typography.caption2)
         }
+        val installed = vm.installed[app.id]
+        if (!busy && installed != null && app.pkg != ownPkg) item {
+            CompactChip(
+                onClick = { vm.installer.uninstall(app.pkg) }, label = { Text("Desinstalar") },
+                colors = ChipDefaults.chipColors(backgroundColor = MaterialTheme.colors.surface, contentColor = MaterialTheme.colors.error),
+            )
+        }
         item { Text("Acerca de esta app", style = MaterialTheme.typography.title3, textAlign = TextAlign.Center) }
         item { Text(app.description.ifBlank { "Sin descripción" }, style = MaterialTheme.typography.body2, textAlign = TextAlign.Center) }
         items(app.screenshots) { url ->
@@ -183,6 +201,27 @@ private fun DetailScreen(vm: StoreViewModel, app: StoreApp, onPermission: () -> 
         if (app.notes.isNotBlank()) {
             item { Text("Novedades", style = MaterialTheme.typography.title3, textAlign = TextAlign.Center) }
             item { Text(app.notes, style = MaterialTheme.typography.body2, textAlign = TextAlign.Center) }
+        }
+        if (app.versions.isNotEmpty()) {
+            item { Text("Versiones anteriores", style = MaterialTheme.typography.title3, textAlign = TextAlign.Center) }
+            // Android no deja instalar una versión más vieja encima: hay que desinstalar antes
+            items(app.versions) { v ->
+                Chip(
+                    onClick = { vm.installVersion(app, v, onPermission) },
+                    enabled = !busy && (installed == null || installed < v.versionCode),
+                    label = { Text("v${v.versionName}") },
+                    secondaryLabel = {
+                        Text(
+                            when {
+                                installed == v.versionCode -> "Instalada"
+                                installed != null && installed > v.versionCode -> "Desinstala para volver"
+                                else -> String.format(Locale.getDefault(), "Instalar · %.1f MB", v.size / 1048576.0)
+                            },
+                        )
+                    },
+                    colors = ChipDefaults.secondaryChipColors(), modifier = Modifier.fillMaxWidth(),
+                )
+            }
         }
     }
     }

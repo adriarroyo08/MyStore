@@ -154,4 +154,11 @@ open class StoreViewModel(app: Application, private val type: String, private va
             else viewModelScope.launch { installer.install(app) }
         }
     }
+
+    // Versión anterior: Android no deja bajar de versión, así que solo si no hay una más nueva instalada
+    fun installVersion(app: StoreApp, v: StoreVersion, onPermission: () -> Unit) {
+        if ((installed[app.id] ?: 0) > v.versionCode) return
+        if (!installer.canInstall()) onPermission()
+        else viewModelScope.launch { installer.install(app.asVersion(v)) }
+    }
 }
