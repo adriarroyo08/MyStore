@@ -214,14 +214,16 @@ Cualquiera que conozca la URL puede ver la lista y descargar las APKs; solo quie
 
 ### API REST
 
-El token va en la cabecera `Authorization: Bearer <token>`. El `id` de una app es `<package>-phone` o `<package>-watch`. Los errores devuelven `{"error": "..."}`.
+El token va en la cabecera `Authorization: Bearer <token>`. El `id` de una app es `<package>-phone`, `<package>-watch` o `<bundleid>-ios`. Los errores devuelven `{"error": "..."}`.
 
 | Método | Ruta | Token | Descripción |
 |---|---|:---:|---|
 | `GET` | `/` | — | Web de administración |
-| `GET` | `/api/apps?type=phone\|watch` | — | Lista de apps (con `iconUrl`, `apkUrl`, `screenshots`) |
+| `GET` | `/api/apps?type=phone\|watch\|ios` | — | Lista de apps (con `iconUrl`, `apkUrl`, `screenshots`) |
 | `GET` | `/api/apps/{id}/icon` | — | Icono PNG (genérico si no hay) |
 | `GET` | `/api/apps/{id}/apk` | — | Descarga la APK |
+| `GET` | `/api/apps/{id}/manifest.plist` | — | Manifiesto para instalar una app iOS desde Safari (`itms-services`) |
+| `GET` | `/api/altstore.json` | — | Fuente para SideStore / AltStore con las apps iOS |
 | `GET` | `/api/apps/{id}/screenshots/{n}` | — | Captura número `n` (desde 1) |
 | `POST` | `/api/apps` | 🔑 | Sube o actualiza (multipart: `apk`, `notes`, `description`) |
 | `PATCH` | `/api/apps/{id}` | 🔑 | Edita textos (JSON: `description`, `notes`) |
@@ -311,6 +313,19 @@ keyPassword=...
 Las builds debug y release usan esa clave. Sin el fichero se usa la clave debug por defecto, que vale para probar pero no para compartir entre equipos.
 
 </details>
+
+## 🍎 ¿Y iOS?
+
+No hay app de MyStore para iPhone: iOS prohíbe que una app instale otras. Pero el servidor también guarda **IPAs** (sube el `.ipa` igual que una APK, con el mismo `POST /api/apps`) y el iPhone las instala por su cuenta, de dos formas:
+
+| Vía | Qué hace falta | Límites |
+|---|---|---|
+| **Ad Hoc desde Safari** | Cuenta de Apple Developer de pago (99 $/año) y los UDID de tus dispositivos registrados en el perfil. En la web, abierta desde Safari en el iPhone, pulsa *Instalar en iPhone* | Hasta 100 dispositivos por año; el servidor debe ir por **https** (Cloudflare Tunnel sirve) |
+| **Fuente de SideStore / AltStore** | Un Apple ID gratuito. Añade `https://tu-dominio/api/altstore.json` como fuente (hay enlaces en la web) | Máximo 3 apps activas y hay que **re-firmarlas cada 7 días** |
+
+Lo que **no** se puede: actualizaciones automáticas en segundo plano (el iPhone solo se actualiza cuando abres SideStore/AltStore o reinstalas desde Safari) ni Apple Watch.
+
+El IPA lo tienes que compilar y **firmar tú** (Xcode, Expo EAS, exportación de Godot…): MyStore solo lo guarda y lo sirve. Al subir no se comprueba la firma, y el `CFBundleVersion` debe ser numérico (`7` o `1.2.3`) y mayor que el guardado.
 
 ## ❓ Preguntas frecuentes
 

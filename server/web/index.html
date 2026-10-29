@@ -42,6 +42,12 @@
   .ver span { flex:1; }
   .empty { color:var(--muted); text-align:center; padding:12px; }
   a { color:var(--accent); }
+  .tabs { display:flex; gap:6px; margin-bottom:8px; }
+  .tabs button { background:transparent; color:var(--accent); border:1px solid var(--line); }
+  .tabs button.on { background:var(--accent); color:#fff; }
+  a.btn { background:var(--accent); color:#fff; border-radius:16px; padding:6px 14px; font-size:13px; text-decoration:none; }
+  a.btn.big { padding:10px 20px; font-size:15px; font-weight:600; }
+  .src { font-size:13px; color:var(--muted); padding:8px 0; word-break:break-all; }
 </style>
 </head>
 <body>
@@ -57,14 +63,16 @@
   <div class="card">
     <label for="notes">Notas de la versión (opcional)</label>
     <textarea id="notes" placeholder="Qué hay de nuevo"></textarea>
-    <div id="drop" tabindex="0" role="button">Arrastra aquí tus APKs o haz clic para elegirlas</div>
-    <input id="file" type="file" accept=".apk" multiple hidden>
+    <div id="drop" tabindex="0" role="button">Arrastra aquí tus APKs o IPAs (iOS) o haz clic para elegirlas</div>
+    <input id="file" type="file" accept=".apk,.ipa" multiple hidden>
     <div id="uploads"></div>
   </div>
 
   <div class="card" id="server" hidden></div>
 
   <div class="card">
+    <div class="tabs" id="tabs"></div>
+    <div id="src" class="src" hidden></div>
     <div id="apps"><div class="empty">Cargando…</div></div>
   </div>
 </main>
@@ -148,6 +156,24 @@ function upload(file) {
 }
 
 // Lista
+const typeName = { phone: "móvil", watch: "reloj", ios: "iOS" };
+const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+let filter = "";
+let allApps = [];
+function showApps() {
+  const apps = filter ? allApps.filter((a) => a.type === filter) : allApps;
+  $("tabs").replaceChildren(...[["", "Todas"], ["phone", "Móvil"], ["watch", "Reloj"], ["ios", "iOS"]].map(([t, n]) =>
+    el("button", { className: t === filter ? "on" : "", textContent: n, onclick: () => { filter = t; showApps(); } })));
+  const src = $("src");
+  src.hidden = !allApps.some((a) => a.type === "ios");
+  if (!src.hidden) {
+    const url = location.origin + "/api/altstore.json";
+    src.replaceChildren("Fuente para SideStore / AltStore: ", el("code", { textContent: url }), " · ",
+      el("a", { href: "sidestore://source?url=" + encodeURIComponent(url), textContent: "Añadir a SideStore" }), " · ",
+      el("a", { href: "altstore://source?url=" + encodeURIComponent(url), textContent: "Añadir a AltStore" }));
+  }
+  $("apps").replaceChildren(...(apps.length ? apps.map(appRow) : [el("div", { className: "empty", textContent: "No hay apps de este tipo." })]));
+}
 async function loadApps() {
   const box = $("apps");
   let apps;
@@ -160,10 +186,11 @@ async function loadApps() {
     return;
   }
   if (!apps.length) {
-    box.replaceChildren(el("div", { className: "empty", textContent: "Aún no hay apps. Sube tu primera APK." }));
+    box.replaceChildren(el("div", { className: "empty", textContent: "Aún no hay apps. Sube tu primera APK o IPA." }));
     return;
   }
-  box.replaceChildren(...apps.map(appRow));
+  allApps = apps;
+  showApps();
 }
 
 function appRow(a) {
@@ -174,9 +201,11 @@ function appRow(a) {
     el("img", { src: a.iconUrl, alt: "" }),
     el("div", { className: "meta" },
       el("strong", { textContent: a.label }),
-      el("span", { className: "tag", textContent: a.type === "watch" ? "reloj" : "móvil" }),
+      el("span", { className: "tag", textContent: typeName[a.type] || a.type }),
       el("small", { textContent: `${a.package} · v${a.versionName} (${a.versionCode}) · ${sizeMB(a.size)} · ${date}` })),
     el("div", { className: "actions" },
+      ...(a.type === "ios" ? [el("a", { className: isIOS ? "btn big" : "btn", textContent: "Instalar en iPhone",
+        href: "itms-services://?action=download-manifest&url=" + encodeURIComponent(location.origin + `/api/apps/${a.id}/manifest.plist`) })] : []),
       el("a", { href: a.apkUrl, textContent: "Descargar" }),
       el("button", { className: "secondary", textContent: "Editar", onclick: () => toggleEdit() }),
       el("button", { className: "danger", textContent: "Borrar", onclick: () => askDelete() })));
@@ -258,7 +287,7 @@ function appRow(a) {
 
   function askDelete() {
     status.className = "msg";
-    status.replaceChildren(`¿Borrar ${a.label} (${a.type === "watch" ? "reloj" : "móvil"})? `,
+    status.replaceChildren(`¿Borrar ${a.label} (${typeName[a.type] || a.type})? `,
       el("button", { className: "danger", textContent: "Sí, borrar", onclick: async () => {
         const res = await fetch("/api/apps/" + a.id, { method: "DELETE", headers: auth() });
         if (res.ok) loadApps(); else { status.className = "msg err"; status.textContent = await apiError(res); }

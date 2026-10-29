@@ -71,7 +71,7 @@ type Device struct {
 	LastSeen time.Time `json:"lastSeen"`
 }
 
-var idRe = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_.]*-(phone|watch)$`)
+var idRe = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_.]*-(phone|watch|ios)$`)
 
 func NewStore(dir string) (*Store, error) {
 	apps := filepath.Join(dir, "apps")
@@ -178,7 +178,7 @@ func (s *Store) Get(id string) (App, error) {
 	return a, json.Unmarshal(data, &a)
 }
 
-// List devuelve las apps de un tipo ("phone", "watch" o "" para todas), ordenadas por nombre.
+// List devuelve las apps de un tipo ("phone", "watch", "ios" o "" para todas), ordenadas por nombre.
 func (s *Store) List(typ string) ([]App, error) {
 	entries, err := os.ReadDir(s.apps)
 	if err != nil {
@@ -201,7 +201,11 @@ func (s *Store) List(typ string) ([]App, error) {
 // Put valida la APK en tmpAPK y la mueve al almacén, sustituyendo la versión anterior.
 // Si description viene vacía se conserva la anterior.
 func (s *Store) Put(tmpAPK, notes, description string) (App, error) {
-	meta, icon, err := ParseAPK(tmpAPK)
+	parse := ParseAPK
+	if isIPA(tmpAPK) {
+		parse = ParseIPA
+	}
+	meta, icon, err := parse(tmpAPK)
 	if err != nil {
 		return App{}, err
 	}
@@ -220,7 +224,7 @@ func (s *Store) Put(tmpAPK, notes, description string) (App, error) {
 		if meta.VersionCode <= old.VersionCode {
 			return App{}, fmt.Errorf("%w (guardada: %s, código %d)", ErrNotNewer, old.VersionName, old.VersionCode)
 		}
-		if meta.CertSHA256 != old.CertSHA256 {
+		if meta.Type != "ios" && meta.CertSHA256 != old.CertSHA256 { // iOS: los perfiles cambian el certificado
 			return App{}, ErrCertMismatch
 		}
 		if a.Description == "" {
