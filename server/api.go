@@ -122,6 +122,7 @@ func NewHandler(s *Store, token string, maxUploadBytes int64) http.Handler {
 	})
 
 	mux.HandleFunc("GET /api/apps", func(w http.ResponseWriter, r *http.Request) {
+		s.SeenDevice(r.Header.Get("X-MyStore-Device"))
 		apps, err := s.List(r.URL.Query().Get("type"))
 		if err != nil {
 			storeError(w, err)
@@ -347,17 +348,40 @@ func NewHandler(s *Store, token string, maxUploadBytes int64) http.Handler {
 	}))
 
 	mux.HandleFunc("PATCH /api/apps/{id}", auth(func(w http.ResponseWriter, r *http.Request) {
-		var body struct{ Description, Notes *string }
+		var body struct{ Description, Notes, Category *string }
 		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
 			writeError(w, http.StatusBadRequest, "JSON no válido")
 			return
 		}
-		a, err := s.Update(r.PathValue("id"), body.Description, body.Notes)
+		a, err := s.Update(r.PathValue("id"), body.Description, body.Notes, body.Category)
 		if err != nil {
 			storeError(w, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, withURLs(a))
+	}))
+
+	mux.HandleFunc("DELETE /api/apps/{id}/versions/{code}", auth(func(w http.ResponseWriter, r *http.Request) {
+		code, err := strconv.ParseInt(r.PathValue("code"), 10, 64)
+		if err == nil {
+			err = s.DeleteVersion(r.PathValue("id"), code)
+		} else {
+			err = ErrNotFound
+		}
+		if err != nil {
+			storeError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	mux.HandleFunc("GET /api/stats", auth(func(w http.ResponseWriter, r *http.Request) {
+		apps, err := s.List("")
+		if err != nil {
+			storeError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"apps": len(apps), "diskBytes": s.DiskBytes(), "devices": s.Devices()})
 	}))
 
 	mux.HandleFunc("DELETE /api/apps/{id}", auth(func(w http.ResponseWriter, r *http.Request) {

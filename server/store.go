@@ -46,6 +46,7 @@ type App struct {
 	Meta
 	ID          string    `json:"id"`
 	Description string    `json:"description"`
+	Category    string    `json:"category"`
 	Notes       string    `json:"notes"`
 	HasIcon     bool      `json:"hasIcon"`
 	CustomIcon  bool      `json:"customIcon"` // icon.png lo subió el admin, no viene de la APK
@@ -57,8 +58,17 @@ type App struct {
 // Store guarda cada app en apps/<id>/{app.apk, icon.png, meta.json}.
 // ponytail: un solo mutex para todas las escrituras; basta para una tienda personal.
 type Store struct {
-	apps string
-	mu   sync.Mutex
+	root    string // raíz de datos; apps/ y devices.json cuelgan de aquí
+	apps    string
+	mu      sync.Mutex
+	devMu   sync.Mutex
+	devices map[string]time.Time
+}
+
+// Device es un cliente que ha consultado el catálogo (cabecera X-MyStore-Device).
+type Device struct {
+	Device   string    `json:"device"`
+	LastSeen time.Time `json:"lastSeen"`
 }
 
 var idRe = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_.]*-(phone|watch)$`)
@@ -88,7 +98,62 @@ func NewStore(dir string) (*Store, error) {
 		}
 		os.RemoveAll(filepath.Join(apps, name))
 	}
-	return &Store{apps: apps}, nil
+	s := &Store{root: dir, apps: apps, devices: map[string]time.Time{}}
+	if data, err := os.ReadFile(filepath.Join(dir, "devices.json")); err == nil {
+		json.Unmarshal(data, &s.devices) // si está corrupto se empieza de cero
+	}
+	return s, nil
+}
+
+// SeenDevice anota el dispositivo; escribe a disco como mucho una vez por minuto y dispositivo.
+func (s *Store) SeenDevice(device string) {
+	device = strings.TrimSpace(device)
+	if r := []rune(device); len(r) > 100 {
+		device = string(r[:100])
+	}
+	if device == "" {
+		return
+	}
+	s.devMu.Lock()
+	defer s.devMu.Unlock()
+	now := time.Now().UTC()
+	if last, ok := s.devices[device]; ok && now.Sub(last) < time.Minute {
+		return
+	}
+	s.devices[device] = now
+	if data, err := json.Marshal(s.devices); err == nil {
+		tmp := filepath.Join(s.root, "devices.json.tmp")
+		if os.WriteFile(tmp, data, 0o644) == nil {
+			os.Rename(tmp, filepath.Join(s.root, "devices.json"))
+		}
+	}
+}
+
+// Devices devuelve los dispositivos vistos, el más reciente primero.
+func (s *Store) Devices() []Device {
+	s.devMu.Lock()
+	defer s.devMu.Unlock()
+	out := make([]Device, 0, len(s.devices))
+	for d, t := range s.devices {
+		out = append(out, Device{d, t})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].LastSeen.After(out[j].LastSeen) })
+	return out
+}
+
+// DiskBytes suma el tamaño de todo el árbol apps/.
+// ponytail: los enlaces duros de versions/ cuentan dos veces; sobreestima, no importa para un panel.
+func (s *Store) DiskBytes() int64 {
+	var n int64
+	filepath.WalkDir(s.apps, func(_ string, e os.DirEntry, err error) error {
+		if err == nil && !e.IsDir() {
+			if fi, err := e.Info(); err == nil {
+				n += fi.Size()
+			}
+		}
+		return nil
+	})
+	return n
 }
 
 func (s *Store) dir(id string) (string, error) {
@@ -162,6 +227,7 @@ func (s *Store) Put(tmpAPK, notes, description string) (App, error) {
 			a.Description = old.Description
 		}
 		a.Shots = old.Shots
+		a.Category = old.Category
 		prev := Version{old.VersionCode, old.VersionName, old.Notes, old.Size, old.UpdatedAt}
 		a.Versions = append([]Version{prev}, old.Versions...)
 		a.Versions = a.Versions[:min(len(a.Versions), maxVersions)]
@@ -221,7 +287,7 @@ func (s *Store) Put(tmpAPK, notes, description string) (App, error) {
 	return a, replaceDir(tmp, dest)
 }
 
-func (s *Store) Update(id string, description, notes *string) (App, error) {
+func (s *Store) Update(id string, description, notes, category *string) (App, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	a, err := s.Get(id)
@@ -234,8 +300,36 @@ func (s *Store) Update(id string, description, notes *string) (App, error) {
 	if notes != nil {
 		a.Notes = *notes
 	}
+	if category != nil {
+		a.Category = strings.TrimSpace(*category)
+		if r := []rune(a.Category); len(r) > 40 {
+			a.Category = strings.TrimSpace(string(r[:40]))
+		}
+	}
 	d, _ := s.dir(id)
 	return a, writeMeta(d, a)
+}
+
+// DeleteVersion quita una versión anterior del historial y borra su APK.
+func (s *Store) DeleteVersion(id string, code int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	a, err := s.Get(id)
+	if err != nil {
+		return err
+	}
+	for i, v := range a.Versions {
+		if v.VersionCode == code {
+			a.Versions = append(a.Versions[:i:i], a.Versions[i+1:]...)
+			d, _ := s.dir(id)
+			if err := writeMeta(d, a); err != nil {
+				return err
+			}
+			os.Remove(filepath.Join(d, "versions", fmt.Sprintf("%d.apk", code)))
+			return nil
+		}
+	}
+	return ErrNotFound
 }
 
 func (s *Store) Delete(id string) error {

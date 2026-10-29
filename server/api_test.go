@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 const testToken = "secret"
@@ -422,5 +423,110 @@ func TestVersionHistoryIsCapped(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(s.apps, "com.example.demo-phone", "versions", "1.apk")); err == nil {
 		t.Error("old apk kept beyond the cap")
+	}
+}
+
+func TestCategory(t *testing.T) {
+	srv, _ := newTestServer(t, 1<<20)
+	upload(t, srv, testToken, "phone-v1.apk")
+	app := srv.URL + "/api/apps/com.example.demo-phone"
+	if res := do(t, "PATCH", app, "", strings.NewReader(`{"category":"Juegos"}`), "application/json"); res.StatusCode != 401 {
+		t.Errorf("patch no token: %d", res.StatusCode)
+	}
+	if res := do(t, "PATCH", app, testToken, strings.NewReader(`{"category":"  Juegos "}`), "application/json"); res.StatusCode != 200 {
+		t.Fatalf("patch: %d", res.StatusCode)
+	}
+	if c := listApps(t, srv, "")[0]["category"]; c != "Juegos" {
+		t.Errorf("category = %v", c)
+	}
+	upload(t, srv, testToken, "phone-v2.apk") // se conserva en nuevas subidas
+	if c := listApps(t, srv, "")[0]["category"]; c != "Juegos" {
+		t.Errorf("after upload category = %v", c)
+	}
+	do(t, "PATCH", app, testToken, strings.NewReader(`{"category":"`+strings.Repeat("ñ", 60)+`"}`), "application/json")
+	if c := listApps(t, srv, "")[0]["category"].(string); len([]rune(c)) != 40 {
+		t.Errorf("category not capped: %d", len([]rune(c)))
+	}
+	do(t, "PATCH", app, testToken, strings.NewReader(`{"category":""}`), "application/json")
+	if c := listApps(t, srv, "")[0]["category"]; c != "" {
+		t.Errorf("category not cleared: %v", c)
+	}
+}
+
+func TestDeleteVersion(t *testing.T) {
+	srv, s := newTestServer(t, 1<<20)
+	upload(t, srv, testToken, "phone-v1.apk")
+	upload(t, srv, testToken, "phone-v2.apk")
+	u := srv.URL + "/api/apps/com.example.demo-phone/versions/"
+	if res := do(t, "DELETE", u+"1", "", nil, ""); res.StatusCode != 401 {
+		t.Errorf("no token: %d", res.StatusCode)
+	}
+	for _, c := range []string{"9", "x", "2"} {
+		if res := do(t, "DELETE", u+c, testToken, nil, ""); res.StatusCode != 404 {
+			t.Errorf("%s: %d", c, res.StatusCode)
+		}
+	}
+	if res := do(t, "DELETE", u+"1", testToken, nil, ""); res.StatusCode != 204 {
+		t.Fatalf("delete: %d", res.StatusCode)
+	}
+	if a, _ := s.Get("com.example.demo-phone"); len(a.Versions) != 0 {
+		t.Errorf("versions = %v", a.Versions)
+	}
+	if _, err := os.Stat(filepath.Join(s.apps, "com.example.demo-phone", "versions", "1.apk")); err == nil {
+		t.Error("apk kept")
+	}
+	if res := do(t, "DELETE", u+"1", testToken, nil, ""); res.StatusCode != 404 {
+		t.Errorf("twice: %d", res.StatusCode)
+	}
+}
+
+func TestDevicesAndStats(t *testing.T) {
+	srv, s := newTestServer(t, 1<<20)
+	upload(t, srv, testToken, "phone-v1.apk")
+	get := func(device string) {
+		req, _ := http.NewRequest("GET", srv.URL+"/api/apps", nil)
+		if device != "" {
+			req.Header.Set("X-MyStore-Device", device)
+		}
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+	}
+	get("")
+	get("POCO X6 · phone · 1.4")
+	get("POCO X6 · phone · 1.4")
+	get(strings.Repeat("d", 300))
+	if res := do(t, "GET", srv.URL+"/api/stats", "", nil, ""); res.StatusCode != 401 {
+		t.Errorf("stats no token: %d", res.StatusCode)
+	}
+	var st struct {
+		Apps      int
+		DiskBytes int64
+		Devices   []struct {
+			Device   string
+			LastSeen string
+		}
+	}
+	res := do(t, "GET", srv.URL+"/api/stats", testToken, nil, "")
+	if err := json.NewDecoder(res.Body).Decode(&st); err != nil {
+		t.Fatal(err)
+	}
+	if st.Apps != 1 || st.DiskBytes <= 0 || len(st.Devices) != 2 {
+		t.Fatalf("stats = %+v", st)
+	}
+	if len(st.Devices[0].Device) != 100 || st.Devices[1].Device != "POCO X6 · phone · 1.4" {
+		t.Errorf("devices = %+v", st.Devices) // más nuevo primero, con tope de 100
+	}
+	if _, err := time.Parse(time.RFC3339, st.Devices[0].LastSeen); err != nil {
+		t.Error(err)
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(s.apps), "devices.json")); err != nil {
+		t.Error("devices.json no escrito")
+	}
+	s2, _ := NewStore(filepath.Dir(s.apps)) // persiste entre reinicios
+	if len(s2.Devices()) != 2 {
+		t.Errorf("reloaded = %v", s2.Devices())
 	}
 }

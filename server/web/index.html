@@ -15,7 +15,7 @@
   h1 { font-size:22px; margin:0 0 16px; }
   .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:16px; }
   label { display:block; font-size:13px; color:var(--muted); margin-bottom:4px; }
-  input[type=password], input[type=text], textarea { width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:8px; background:transparent; color:inherit; font:inherit; }
+  input[type=password], input[type=text], input[list], textarea { width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:8px; background:transparent; color:inherit; font:inherit; }
   textarea { min-height:60px; resize:vertical; }
   button { border:0; border-radius:16px; padding:6px 14px; font:inherit; font-size:13px; cursor:pointer; background:var(--accent); color:#fff; }
   button.secondary { background:transparent; color:var(--accent); border:1px solid var(--line); }
@@ -38,11 +38,14 @@
   .shot img { width:96px; height:170px; object-fit:cover; border-radius:8px; border:1px solid var(--line); display:block; margin-bottom:4px; }
   .shotdrop { border:2px dashed var(--line); border-radius:8px; padding:10px; text-align:center; color:var(--muted); cursor:pointer; font-size:13px; }
   .shotdrop.over { border-color:var(--accent); color:var(--accent); }
+  .ver { display:flex; align-items:center; gap:8px; font-size:13px; }
+  .ver span { flex:1; }
   .empty { color:var(--muted); text-align:center; padding:12px; }
   a { color:var(--accent); }
 </style>
 </head>
 <body>
+<datalist id="cats"><option value="Juegos"><option value="Utilidades"><option value="Salud"><option value="Productividad"><option value="Finanzas"><option value="Herramientas"></datalist>
 <main>
   <h1>MyStore</h1>
 
@@ -58,6 +61,8 @@
     <input id="file" type="file" accept=".apk" multiple hidden>
     <div id="uploads"></div>
   </div>
+
+  <div class="card" id="server" hidden></div>
 
   <div class="card">
     <div id="apps"><div class="empty">Cargando…</div></div>
@@ -77,6 +82,29 @@ function el(tag, props = {}, ...children) {
   return e;
 }
 const sizeMB = (b) => (b / 1048576).toFixed(1) + " MB";
+const sizeHuman = (b) => b >= 1073741824 ? (b / 1073741824).toFixed(2) + " GB" : sizeMB(b);
+function ago(iso) {
+  const m = Math.max(0, Math.round((Date.now() - new Date(iso)) / 60000));
+  if (m < 1) return "ahora mismo";
+  if (m < 60) return `hace ${m} min`;
+  if (m < 1440) return `hace ${Math.floor(m / 60)} h`;
+  return `hace ${Math.floor(m / 1440)} d`;
+}
+
+// Panel del servidor: solo con token válido (/api/stats exige autenticación)
+async function loadStats() {
+  const box = $("server");
+  try {
+    const res = await fetch("/api/stats", { headers: auth() });
+    if (!res.ok) throw 0;
+    const st = await res.json();
+    box.replaceChildren(el("strong", { textContent: "Servidor" }),
+      el("div", { className: "msg", textContent: `${st.apps} apps · ${sizeHuman(st.diskBytes)} en disco` }),
+      ...(st.devices || []).map((d) => el("small", { className: "msg", style: "display:block;color:var(--muted)", textContent: `${d.device} · ${ago(d.lastSeen)}` })));
+    box.hidden = false;
+  } catch { box.hidden = true; }
+}
+tokenInput.addEventListener("change", loadStats);
 
 async function apiError(res) {
   try { return (await res.json()).error || res.statusText; } catch { return res.statusText; }
@@ -109,7 +137,7 @@ function upload(file) {
     if (xhr.status === 201) {
       msg.className = "msg ok";
       msg.textContent = `${file.name}: subida ${body.label} ${body.versionName}`;
-      loadApps();
+      loadApps(); loadStats();
     } else {
       msg.className = "msg err";
       msg.textContent = `${file.name}: ${body.error || "error " + xhr.status}`;
@@ -159,6 +187,17 @@ function appRow(a) {
     if (editor) { editor.remove(); editor = null; return; }
     const desc = el("textarea", { value: a.description, placeholder: "Descripción" });
     const notes = el("textarea", { value: a.notes, placeholder: "Notas de la versión" });
+    const cat = el("input", { type: "text", value: a.category || "", placeholder: "Categoría", maxLength: 40 });
+    cat.setAttribute("list", "cats");
+    const versBox = el("div", {}, ...(a.versions || []).map((v) => {
+      const line = el("div", { className: "ver" }, el("span", { textContent: `v${v.versionName} (${v.versionCode}) · ${new Date(v.updatedAt).toLocaleDateString()} · ${sizeMB(v.size)}` }),
+        el("button", { className: "secondary", textContent: "Borrar", onclick: async () => {
+          if (!confirm(`¿Borrar la versión ${v.versionName}?`)) return;
+          const res = await fetch(`/api/apps/${a.id}/versions/${v.versionCode}`, { method: "DELETE", headers: auth() });
+          if (res.ok) line.remove(); else { status.className = "msg err"; status.textContent = await apiError(res); }
+        } }));
+      return line;
+    }));
     const shotsBox = el("div", { className: "shots" });
     const shotMsg = el("div", { className: "msg" });
     const shotFile = el("input", { type: "file", accept: "image/png,image/jpeg,image/webp", multiple: true, hidden: true });
@@ -204,12 +243,13 @@ function appRow(a) {
       } catch { iconMsg.className = "msg err"; iconMsg.textContent = "error de red"; }
     };
     showShots(a.screenshots || []);
-    editor = el("div", { className: "edit" }, desc, notes,
+    editor = el("div", { className: "edit" }, desc, notes, el("label", {}, "Categoría"), cat,
+      ...(a.versions && a.versions.length ? [el("label", {}, "Versiones anteriores"), versBox] : []),
       el("div", {}, "Cambiar icono: ", iconImg, " ", iconFile), iconMsg, shotsBox, shotDrop, shotFile, shotMsg,
       el("div", {}, el("button", { textContent: "Guardar", onclick: async () => {
         const res = await fetch("/api/apps/" + a.id, {
           method: "PATCH", headers: { ...auth(), "Content-Type": "application/json" },
-          body: JSON.stringify({ description: desc.value, notes: notes.value }),
+          body: JSON.stringify({ description: desc.value, notes: notes.value, category: cat.value }),
         });
         if (res.ok) loadApps(); else { status.className = "msg err"; status.textContent = await apiError(res); }
       } })));
@@ -229,6 +269,7 @@ function appRow(a) {
 }
 
 loadApps();
+loadStats();
 </script>
 </body>
 </html>

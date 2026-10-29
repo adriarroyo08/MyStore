@@ -104,7 +104,7 @@ func TestUpdate(t *testing.T) {
 	s := newTestStore(t)
 	mustPut(t, s, "phone-v1.apk", "n", "d")
 	desc := "nueva"
-	a, err := s.Update("com.example.demo-phone", &desc, nil)
+	a, err := s.Update("com.example.demo-phone", &desc, nil, nil)
 	if err != nil || a.Description != "nueva" || a.Notes != "n" {
 		t.Errorf("got %+v, %v", a, err)
 	}
