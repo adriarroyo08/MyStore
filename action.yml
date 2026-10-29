@@ -17,6 +17,22 @@ inputs:
     description: Notas de la versión
     required: false
     default: ""
+  keystore-base64:
+    description: Keystore en base64 para refirmar la APK antes de subirla (la tienda exige la misma firma que la versión publicada). Vacío = se sube tal cual
+    required: false
+    default: ""
+  keystore-password:
+    description: Contraseña del keystore
+    required: false
+    default: android
+  key-alias:
+    description: Alias de la clave
+    required: false
+    default: androiddebugkey
+  key-password:
+    description: Contraseña de la clave (por defecto, la del keystore)
+    required: false
+    default: ""
 runs:
   using: composite
   steps:
@@ -26,6 +42,10 @@ runs:
         TOKEN: ${{ inputs.token }}
         APK: ${{ inputs.apk }}
         NOTES: ${{ inputs.notes }}
+        KS_B64: ${{ inputs.keystore-base64 }}
+        KS_PASS: ${{ inputs.keystore-password }}
+        KS_ALIAS: ${{ inputs.key-alias }}
+        KEY_PASS: ${{ inputs.key-password }}
       run: |
         set -euo pipefail
         shopt -s nullglob
@@ -34,10 +54,20 @@ runs:
           echo "::error::'$APK' debe coincidir con exactamente una APK (coincide con ${#files[@]})"
           exit 1
         fi
+        apk="${files[0]}"
+        if [ -n "$KS_B64" ]; then
+          ks="$RUNNER_TEMP/mystore.keystore"
+          echo "$KS_B64" | base64 -d > "$ks"
+          signer=$(ls -d "${ANDROID_HOME:-$ANDROID_SDK_ROOT}"/build-tools/*/apksigner | sort -V | tail -1)
+          "$signer" sign --ks "$ks" --ks-pass "pass:$KS_PASS" --ks-key-alias "$KS_ALIAS" \
+            --key-pass "pass:${KEY_PASS:-$KS_PASS}" --out "$RUNNER_TEMP/mystore.apk" "$apk"
+          rm -f "$ks"
+          apk="$RUNNER_TEMP/mystore.apk"
+        fi
         echo "Subiendo ${files[0]} a ${STORE_URL%/}"
         curl --silent --show-error --fail-with-body \
           -H "Authorization: Bearer $TOKEN" \
-          -F "apk=@${files[0]}" \
+          -F "apk=@$apk" \
           -F "notes=<-" \
           "${STORE_URL%/}/api/apps" <<< "$NOTES"
         echo
