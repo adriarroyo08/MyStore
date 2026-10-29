@@ -28,9 +28,9 @@ El CI (`.github/workflows/ci.yml`) ejecuta lo mismo y una prueba de humo del con
 
 | Etiqueta | Significado |
 | --- | --- |
-| `agent:claude` | Necesita criterio: diseño, bug difícil, arquitectura, seguridad. |
-| `agent:codex` | Bien especificada: implementar siguiendo los criterios. |
-| `agent:gemini` | Mecánica: tests, docs, refactor, leer mucho código. |
+| `agent:claude` | Arquitectura y diseño de módulos, interfaz y sistema de diseño, seguridad (auth, API keys, permisos), bugs difíciles o de concurrencia, refactors que cruzan el proyecto. |
+| `agent:codex` | Implementar con la spec clara: lógica, endpoints, pantallas ya diseñadas, tests, migraciones de dependencias, arreglos de CI y build, scripts. También revisa los PR de Claude. |
+| `agent:gemini` | Investigar con fuentes web (estudios, noticias, competidores), contenido y datos con citas, documentación, resumir mucho código, revisar capturas e imágenes, generar assets. |
 | `necesita:pc` | Para verificarla hay que ver la interfaz, sacar capturas, usar emulador o dispositivo, o compilar la app Android: solo en el PC, no en el servidor. |
 | `needs-spec` | Le faltan criterios o cómo verificar: no se reparte. |
 | `epic` | Objetivo grande: se trocea en issues hijas (`Parte de #n`). |
