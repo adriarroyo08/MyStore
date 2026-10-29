@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.provider.Settings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -47,6 +48,21 @@ class Installer(private val context: Context) {
 
     fun cacheBytes(): Long = apkDir.listFiles()?.sumOf { it.length() } ?: 0
 
+    // Borra las APKs que ya no sirven (ver staleApks)
+    fun pruneCache(apps: List<StoreApp>) {
+        val files = apkDir.listFiles() ?: return
+        val stale = staleApks(files.map { it.name to it.lastModified() }, apps,
+            apps.associate { it.id to installedVersion(it.pkg) }, System.currentTimeMillis()).toSet()
+        files.filter { it.name in stale }.forEach { it.delete() }
+    }
+
+    // Instalada por esta tienda: Android deja actualizarla sin preguntar (API 31+)
+    fun isOurs(pkg: String): Boolean = try {
+        context.packageManager.getInstallSourceInfo(pkg).installingPackageName == context.packageName
+    } catch (e: PackageManager.NameNotFoundException) {
+        false
+    }
+
     fun clearCache() {
         apkDir.listFiles()?.forEach { it.delete() }
         _ticks.value++
@@ -83,7 +99,9 @@ class Installer(private val context: Context) {
         }
     }
 
-    suspend fun install(app: StoreApp) {
+    // auto: sin la app delante (segundo plano o pedido desde el móvil); si el sistema pide confirmación
+    // sale una notificación en vez del diálogo
+    suspend fun install(app: StoreApp, auto: Boolean = false) {
         val cur = states.value[app.id]
         if (cur is InstallState.Downloading) return
         if (cur is InstallState.Installing) {
@@ -106,14 +124,16 @@ class Installer(private val context: Context) {
         var downloaded = false
         try {
             withContext(Dispatchers.IO) {
-                val sid = pi.createSession(PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL))
+                val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
+                if (Build.VERSION.SDK_INT >= 31) params.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
+                val sid = pi.createSession(params)
                 pi.openSession(sid).use { session ->
                     try {
                         download(app, session)
                         downloaded = true
                         sessionIds[app.id] = sid
                         setInstallState(app.id, InstallState.Installing)
-                        commit(app, session, sid)
+                        commit(app, session, sid, auto)
                     } catch (e: Exception) {
                         session.abandon()
                         throw e
@@ -145,6 +165,7 @@ class Installer(private val context: Context) {
         val cached = cacheFile(app)
         if (isCached(app)) {
             cached.inputStream().use { copyToSession(app, it, session, null) }
+            cached.setLastModified(System.currentTimeMillis()) // usada: se libra de la limpieza de 30 días
             return
         }
         val part = File(apkDir, cached.name + ".part")
@@ -191,8 +212,9 @@ class Installer(private val context: Context) {
         return copy?.let { try { it.close(); true } catch (e: IOException) { false } } ?: false
     }
 
-    private fun commit(app: StoreApp, session: PackageInstaller.Session, id: Int) {
+    private fun commit(app: StoreApp, session: PackageInstaller.Session, id: Int, auto: Boolean) {
         val intent = Intent(context, InstallReceiver::class.java).putExtra(InstallReceiver.EXTRA_APP_ID, app.id)
+            .putExtra(InstallReceiver.EXTRA_LABEL, app.label).putExtra(InstallReceiver.EXTRA_AUTO, auto)
         val pending = PendingIntent.getBroadcast(
             context, id, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
         )

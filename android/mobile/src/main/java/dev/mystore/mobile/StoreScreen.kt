@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -120,13 +121,15 @@ private fun InstallFeedback(vm: StoreViewModel, host: SnackbarHostState) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun HomeScreen(
-    vm: StoreViewModel, listState: LazyListState, barState: TopAppBarState,
+    vm: PhoneViewModel, listState: LazyListState, barState: TopAppBarState,
     filter: Filter, onFilter: (Filter) -> Unit, onPermission: () -> Unit,
 ) {
     val scroll = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(barState)
     val actions = vm.apps.associate { it.id to actionFor(it.versionCode, vm.installed[it.id]) }
     val updates = vm.apps.filter { actions[it.id] == AppAction.UPDATE }
-    val base = if (vm.query.isBlank()) vm.apps else vm.apps.search(vm.query)
+    val searched = if (vm.query.isBlank()) vm.apps else vm.apps.search(vm.query)
+    val inCategory = vm.category?.let { c -> searched.filter { it.category == c } } ?: searched
+    val base = if (vm.sortRecent) inCategory.recent() else inCategory
     val shown = when (filter) {
         Filter.ALL -> base
         Filter.INSTALLED -> base.filter { actions[it.id] != AppAction.INSTALL }
@@ -164,6 +167,7 @@ private fun HomeScreen(
             ) {
                 item(key = "search") { SearchField(vm.query) { vm.query = it } }
                 item(key = "chips") { FilterChips(filter, onFilter, updates.size) }
+                item(key = "cats") { CategoryChips(vm, vm.apps.categories) }
                 val err = vm.error
                 when {
                     vm.apps.isEmpty() && vm.loading -> items(7) { SkeletonRow() }
@@ -176,7 +180,7 @@ private fun HomeScreen(
                     else -> {
                         if (err != null) item(key = "err") { ErrorStrip(err, vm::load) }
                         if (updates.isNotEmpty() && vm.query.isBlank() && filter != Filter.INSTALLED) item(key = "updates") {
-                            UpdatesCard(vm, updates) { updates.forEach { a -> if (vm.installStates[a.id] !is InstallState.Downloading) vm.act(a, onPermission) } }
+                            UpdatesCard(vm, updates) { vm.updateAll(onPermission) }
                         }
                         if (shown.isEmpty()) item(key = "none") {
                             when {
@@ -218,6 +222,23 @@ private fun SearchField(query: String, onChange: (String) -> Unit) {
             focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent,
         ),
     )
+}
+
+// Orden y categorías (solo si alguna app tiene categoría)
+@Composable
+private fun CategoryChips(vm: PhoneViewModel, categories: List<String>) {
+    Row(
+        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        AssistChip(
+            onClick = { vm.sortRecent = !vm.sortRecent },
+            label = { Text(if (vm.sortRecent) "Orden: recientes" else "Orden: A–Z") },
+        )
+        categories.forEach { c ->
+            FilterChip(vm.category == c, { vm.category = if (vm.category == c) null else c }, label = { Text(c) })
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

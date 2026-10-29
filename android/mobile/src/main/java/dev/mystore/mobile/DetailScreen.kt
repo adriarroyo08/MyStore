@@ -24,6 +24,7 @@ import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -209,6 +210,7 @@ private fun ActionArea(vm: StoreViewModel, app: StoreApp, onPermission: () -> Un
                 }
             }
         }
+        (vm as? PhoneViewModel)?.let { WatchButton(it, app) }
         AnimatedVisibility(s is InstallState.Failed) {
             val msg = (s as? InstallState.Failed)?.message.orEmpty()
             Row(Modifier.padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -217,6 +219,26 @@ private fun ActionArea(vm: StoreViewModel, app: StoreApp, onPermission: () -> Un
                 Text(msg, style = MaterialTheme.typography.bodyMedium, color = cs.error)
             }
         }
+    }
+}
+
+// La versión de reloj de esta app, mandada al reloj conectado para que la instale
+@Composable
+private fun WatchButton(vm: PhoneViewModel, app: StoreApp) {
+    LaunchedEffect(Unit) { vm.loadWatch() }
+    if (!vm.watchOnline || app.pkg !in vm.watchPkgs) return
+    val scope = rememberCoroutineScope()
+    var sent by remember(app.id) { mutableStateOf<Boolean?>(null) }
+    OutlinedButton(
+        onClick = { scope.launch { sent = vm.sendToWatch(app.pkg) } },
+        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+    ) { Text("Instalar en el reloj") }
+    sent?.let {
+        Text(
+            if (it) "Enviada: el reloj la descarga y te pedirá confirmar" else "No se pudo contactar con el reloj",
+            Modifier.padding(top = 4.dp), style = MaterialTheme.typography.bodySmall,
+            color = if (it) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+        )
     }
 }
 

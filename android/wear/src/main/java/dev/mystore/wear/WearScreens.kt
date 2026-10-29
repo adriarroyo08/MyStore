@@ -39,7 +39,7 @@ fun WearApp(vm: StoreViewModel, onPermission: () -> Unit) {
     when (val s = vm.screen) {
         Screen.Setup -> SetupScreen(vm, onBack = null)
         Screen.Settings -> Swipeable(vm) { SetupScreen(vm, onBack = { vm.screen = Screen.List }) }
-        Screen.List -> ListScreen(vm)
+        Screen.List -> ListScreen(vm, onPermission)
         is Screen.Detail -> {
             val app = vm.apps.find { it.id == s.id }
             if (app != null) Swipeable(vm) { DetailScreen(vm, app, onPermission) } else vm.screen = Screen.List
@@ -51,7 +51,7 @@ fun WearApp(vm: StoreViewModel, onPermission: () -> Unit) {
 @Composable
 private fun Swipeable(vm: StoreViewModel, content: @Composable () -> Unit) {
     SwipeToDismissBox(onDismissed = { vm.screen = Screen.List }) { isBackground ->
-        if (isBackground) ListScreen(vm) else content()
+        if (isBackground) ListScreen(vm, onPermission = {}) else content()
     }
 }
 
@@ -95,6 +95,15 @@ private fun SetupScreen(vm: StoreViewModel, onBack: (() -> Unit)?) {
             Chip(onClick = onBack, label = { Text("Cancelar") }, colors = ChipDefaults.secondaryChipColors(), modifier = Modifier.fillMaxWidth())
         }
         if (onBack != null) item {
+            ToggleChip(
+                checked = vm.autoUpdate, onCheckedChange = vm::changeAutoUpdate,
+                label = { Text("Actualizar solas") },
+                secondaryLabel = { Text("Cargando y con WiFi") },
+                toggleControl = { Icon(ToggleChipDefaults.switchIcon(vm.autoUpdate), null) },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        if (onBack != null) item {
             val bytes = remember(vm.installed) { vm.installer.cacheBytes() }
             Chip(
                 onClick = { vm.installer.clearCache() }, enabled = bytes > 0,
@@ -107,7 +116,7 @@ private fun SetupScreen(vm: StoreViewModel, onBack: (() -> Unit)?) {
 }
 
 @Composable
-private fun ListScreen(vm: StoreViewModel) {
+private fun ListScreen(vm: StoreViewModel, onPermission: () -> Unit) {
     val state = rememberScalingLazyListState()
     val err = vm.error
     Scaffold(timeText = { TimeText() }, positionIndicator = { PositionIndicator(state) }) {
@@ -121,7 +130,15 @@ private fun ListScreen(vm: StoreViewModel) {
                 }
                 vm.loading && vm.apps.isEmpty() -> item { Text("Cargando…") }
                 vm.apps.isEmpty() -> item { Text("No hay apps para el reloj", textAlign = TextAlign.Center) }
-                else -> items(vm.apps, key = { it.id }) { app ->
+                else -> {
+                val pending = pendingUpdates(vm.apps, vm.installed)
+                if (pending.size > 1) item {
+                    Chip(
+                        onClick = { vm.updateAll(onPermission) }, label = { Text("Actualizar todas") },
+                        secondaryLabel = { Text("${pending.size} apps") }, modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                items(vm.apps, key = { it.id }) { app ->
                     val update = actionFor(app.versionCode, vm.installed[app.id]) == AppAction.UPDATE
                     Chip(
                         onClick = { vm.screen = Screen.Detail(app.id) },
@@ -130,6 +147,7 @@ private fun ListScreen(vm: StoreViewModel) {
                         secondaryLabel = if (update) ({ Text("● Actualizar", color = Green) }) else null,
                         modifier = Modifier.fillMaxWidth(),
                     )
+                }
                 }
             }
             if (err != null && vm.apps.isNotEmpty()) item {

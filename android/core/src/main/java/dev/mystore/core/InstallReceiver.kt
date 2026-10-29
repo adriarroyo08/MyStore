@@ -3,7 +3,11 @@ package dev.mystore.core
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.pm.PackageInstaller
+import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 
@@ -29,6 +33,11 @@ class InstallReceiver : BroadcastReceiver() {
                 val confirm = intent.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)
                 if (confirm == null) {
                     setInstallState(id, InstallState.Failed("El sistema no mostró el instalador"))
+                } else if (intent.getBooleanExtra(EXTRA_AUTO, false)) {
+                    // Sin la app delante no se puede abrir el diálogo: se deja en una notificación
+                    confirmIntents[id] = Intent(confirm)
+                    setInstallState(id, InstallState.Idle)
+                    notifyConfirm(context, id, intent.getStringExtra(EXTRA_LABEL) ?: id, confirm)
                 } else {
                     confirmIntents[id] = Intent(confirm)
                     try {
@@ -48,5 +57,22 @@ class InstallReceiver : BroadcastReceiver() {
         }
     }
 
-    companion object { const val EXTRA_APP_ID = "mystore.appId" }
+    private fun notifyConfirm(context: Context, id: String, label: String, confirm: Intent) {
+        if (needsNotificationPermission(context)) return
+        val nm = context.getSystemService(NotificationManager::class.java)
+        nm.createNotificationChannel(NotificationChannel("installs", "Instalaciones", NotificationManager.IMPORTANCE_HIGH))
+        val tap = PendingIntent.getActivity(context, id.hashCode(), confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        nm.notify(id.hashCode(), NotificationCompat.Builder(context, "installs")
+            .setSmallIcon(R.drawable.ic_stat_update)
+            .setContentTitle("Toca para instalar $label")
+            .setContentText("Lista para instalar desde MyStore")
+            .setContentIntent(tap).setAutoCancel(true).build())
+    }
+
+    companion object {
+        const val EXTRA_APP_ID = "mystore.appId"
+        const val EXTRA_LABEL = "mystore.label"
+        const val EXTRA_AUTO = "mystore.auto"
+    }
 }

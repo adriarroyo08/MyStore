@@ -163,6 +163,19 @@ fun SettingsScreen(vm: StoreViewModel) {
                 KeyValue("Instaladas", "$installed")
                 KeyValue("Versión de MyStore", version)
             }
+            Group("Actualizaciones") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Actualizar automáticamente", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "Con el móvil cargando y con WiFi, las apps instaladas desde MyStore se actualizan solas. Las demás te avisan.",
+                            style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant,
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Switch(vm.autoUpdate, vm::changeAutoUpdate)
+                }
+            }
             Group("Almacenamiento") {
                 // Se relee al borrar: installed cambia con installer.ticks
                 val bytes = remember(vm.installed) { vm.installer.cacheBytes() }

@@ -51,6 +51,12 @@ open class StoreViewModel(app: Application, private val type: String, private va
     val icons = mutableStateMapOf<String, ImageBitmap?>()
 
     val storeUrl get() = settings.storeUrl.orEmpty()
+    private val device = deviceName(app, type)
+
+    var autoUpdate by mutableStateOf(settings.autoUpdate)
+        private set
+
+    fun changeAutoUpdate(on: Boolean) { settings.autoUpdate = on; autoUpdate = on }
 
     init {
         viewModelScope.launch {
@@ -59,7 +65,7 @@ open class StoreViewModel(app: Application, private val type: String, private va
                 refreshInstalled()
             }
         }
-        settings.storeUrl?.let { client = StoreClient(it); screen = Screen.List; load() }
+        settings.storeUrl?.let { client = StoreClient(it, device); screen = Screen.List; load() }
     }
 
     private fun refreshInstalled() {
@@ -75,6 +81,7 @@ open class StoreViewModel(app: Application, private val type: String, private va
                 clearShots()
                 error = null
                 refreshInstalled()
+                withContext(Dispatchers.IO) { installer.pruneCache(apps) }
             } catch (e: StoreException) {
                 error = e.message
             } finally {
@@ -86,7 +93,7 @@ open class StoreViewModel(app: Application, private val type: String, private va
     // Prueba la tienda antes de guardar la URL; devuelve el error o null
     suspend fun connect(input: String): String? {
         val url = normalizeStoreUrl(input) ?: return "Escribe una URL válida (http:// o https://)"
-        val c = StoreClient(url)
+        val c = StoreClient(url, device)
         return try {
             apps = c.apps(type)
             settings.storeUrl = url
@@ -152,6 +159,18 @@ open class StoreViewModel(app: Application, private val type: String, private va
             AppAction.OPEN -> installer.launch(app.pkg)
             else -> if (!installer.canInstall()) onPermission()
             else viewModelScope.launch { installer.install(app) }
+        }
+    }
+
+    // Una detrás de otra: sin descargas en paralelo y, si piden confirmación, los diálogos salen en orden
+    fun updateAll(onPermission: () -> Unit) {
+        if (!installer.canInstall()) return onPermission()
+        val pending = autoUpdateOrder(pendingUpdates(apps, installed), getApplication<Application>().packageName)
+        viewModelScope.launch {
+            pending.forEach { a ->
+                val st = installStates[a.id]
+                if (st !is InstallState.Downloading && st !is InstallState.Installing) installer.install(a)
+            }
         }
     }
 

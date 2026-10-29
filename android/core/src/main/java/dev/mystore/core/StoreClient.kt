@@ -1,5 +1,7 @@
 package dev.mystore.core
 
+import android.content.Context
+import android.os.Build
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -9,9 +11,15 @@ import java.net.URL
 
 class StoreException(message: String) : Exception(message)
 
-class StoreClient(val baseUrl: String) {
+// Nombre con el que la tienda lista este dispositivo en la web (cabecera X-MyStore-Device)
+fun deviceName(context: Context, type: String): String {
+    val v = try { context.packageManager.getPackageInfo(context.packageName, 0).versionName } catch (e: Exception) { null }
+    return "${Build.MANUFACTURER} ${Build.MODEL} · $type · ${v ?: "?"}"
+}
+
+class StoreClient(val baseUrl: String, private val device: String? = null) {
     suspend fun apps(type: String): List<StoreApp> = withContext(Dispatchers.IO) {
-        val body = get("$baseUrl/api/apps?type=$type").toString(Charsets.UTF_8)
+        val body = get("$baseUrl/api/apps?type=$type", device).toString(Charsets.UTF_8)
         try {
             parseApps(body, baseUrl)
         } catch (e: Exception) {
@@ -24,9 +32,10 @@ class StoreClient(val baseUrl: String) {
     // Descarga genérica (capturas)
     suspend fun bytes(url: String): ByteArray = withContext(Dispatchers.IO) { get(url) }
 
-    private fun get(url: String): ByteArray {
+    private fun get(url: String, device: String? = null): ByteArray {
         try {
             val c = URL(url).openConnection() as HttpURLConnection
+            device?.let { c.setRequestProperty("X-MyStore-Device", it) }
             c.connectTimeout = 10_000
             c.readTimeout = 30_000
             try {

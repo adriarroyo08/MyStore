@@ -10,6 +10,7 @@ data class StoreApp(
     val notes: String, val iconUrl: String, val apkUrl: String, // URLs ya absolutas
     val screenshots: List<String> = emptyList(), val updatedAt: String = "",
     val versions: List<StoreVersion> = emptyList(), // anteriores, de la más nueva a la más vieja
+    val category: String = "",
 )
 
 data class StoreVersion(
@@ -52,7 +53,7 @@ fun parseApps(json: String, baseUrl: String): List<StoreApp> {
             versionName = o.optString("versionName"), size = o.optLong("size"),
             description = o.optString("description"), notes = o.optString("notes"),
             iconUrl = baseUrl + o.optString("iconUrl"), apkUrl = baseUrl + o.optString("apkUrl"),
-            updatedAt = o.optString("updatedAt"),
+            updatedAt = o.optString("updatedAt"), category = o.optString("category"),
             screenshots = o.optJSONArray("screenshots")?.let { a -> (0 until a.length()).map { i -> baseUrl + a.getString(i) } }.orEmpty(),
             versions = o.optJSONArray("versions")?.let { a ->
                 (0 until a.length()).map { i ->
@@ -78,3 +79,9 @@ fun List<StoreApp>.search(q: String): List<StoreApp> {
 // Primera línea no vacía de la descripción, para subtítulos de una línea
 val StoreApp.summary: String
     get() = description.lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() }.orEmpty()
+
+// Fechas ISO-8601 en UTC: el orden de texto es el cronológico
+fun List<StoreApp>.recent(): List<StoreApp> = sortedByDescending { it.updatedAt }
+
+// Categorías presentes, en orden alfabético
+val List<StoreApp>.categories: List<String> get() = mapNotNull { it.category.ifBlank { null } }.distinct().sorted()
