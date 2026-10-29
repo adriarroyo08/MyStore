@@ -1,0 +1,32 @@
+name: Tarea para un agente
+description: Trabajo concreto que puede hacer un agente (Claude, Codex o Gemini)
+labels: [needs-spec]
+body:
+  - type: textarea
+    id: objetivo
+    attributes:
+      label: Objetivo
+      description: Qué hay que conseguir y por qué.
+    validations:
+      required: true
+  - type: textarea
+    id: criterios
+    attributes:
+      label: Criterios de aceptación
+      description: Lista comprobable. Si está, se quita needs-spec.
+      placeholder: |
+        - [ ] ...
+    validations:
+      required: true
+  - type: textarea
+    id: verificar
+    attributes:
+      label: Cómo verificar
+      description: Comandos exactos y qué tiene que salir.
+      value: |
+        cd server && go test ./...
+  - type: textarea
+    id: pistas
+    attributes:
+      label: Ficheros o pistas
+      description: Dónde mirar, si lo sabes.
