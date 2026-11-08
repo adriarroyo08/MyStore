@@ -190,6 +190,22 @@ jobs:
           notes: ${{ github.event.release.body }}
 ```
 
+Para fijar exactamente el código de `v1.0.0`, sustituye el paso de la acción por:
+
+```yaml
+      - uses: adriarroyo08/mystore@f617a436d755ba46e268023adfc83a8523e4d296 # v1.0.0
+        with:
+          store-url: ${{ secrets.MYSTORE_URL }}
+          token: ${{ secrets.MYSTORE_TOKEN }}
+          apk: app/build/outputs/apk/release/*.apk
+          notes: ${{ github.event.release.body }}
+```
+
+Las etiquetas semver (`v1.0.0`, etc.) identifican versiones inmutables. Los cambios
+incompatibles requieren una versión mayor; `v1` se mueve solo con versiones
+compatibles de la serie 1.x. El SHA fija el código aunque se mueva `v1`.
+Consulta [cómo publicar una versión de la acción](docs/publicar-accion.md).
+
 | Input | Obligatorio | Descripción |
 |---|:---:|---|
 | `store-url` | ✅ | URL de tu tienda, p. ej. `https://tienda.tudominio.com` |
