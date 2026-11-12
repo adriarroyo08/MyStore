@@ -3,6 +3,10 @@ on:
   push:
   pull_request:
 
+# Ningún trabajo usa GITHUB_TOKEN más allá de clonar el repo.
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
