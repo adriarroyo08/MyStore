@@ -17,7 +17,7 @@
   label { display:block; font-size:13px; color:var(--muted); margin-bottom:4px; }
   input[type=password], input[type=text], input[list], textarea { width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:8px; background:transparent; color:inherit; font:inherit; }
   textarea { min-height:60px; resize:vertical; }
-  button { border:0; border-radius:16px; padding:6px 14px; font:inherit; font-size:13px; cursor:pointer; background:var(--accent); color:#fff; }
+  button { border:0; border-radius:22px; padding:0 16px; min-height:44px; font:inherit; font-size:14px; cursor:pointer; background:var(--accent); color:#fff; }
   button.secondary { background:transparent; color:var(--accent); border:1px solid var(--line); }
   button.danger { background:var(--danger); }
   #drop { border:2px dashed var(--line); border-radius:12px; padding:28px; text-align:center; color:var(--muted); cursor:pointer; margin:12px 0; }
@@ -31,7 +31,15 @@
   .meta { flex:1; min-width:0; }
   .meta small { color:var(--muted); display:block; }
   .tag { font-size:11px; padding:1px 6px; border-radius:6px; border:1px solid var(--line); color:var(--muted); margin-left:6px; }
-  .actions { display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
+  .actions { display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; align-items:center; }
+  .actions a { display:inline-flex; align-items:center; min-height:44px; padding:0 8px; }
+  .head { display:flex; align-items:center; gap:12px; flex:1; min-width:0; }
+  @media (max-width:480px) {
+    .row { flex-direction:column; align-items:stretch; }
+    .actions { justify-content:stretch; flex-wrap:nowrap; }
+    .actions > * { flex:1; justify-content:center; text-align:center; }
+    .edit { padding-left:0; }
+  }
   .edit { padding:8px 0 4px 56px; display:grid; gap:8px; }
   .shots { display:flex; gap:8px; flex-wrap:wrap; }
   .shot { width:96px; text-align:center; }
@@ -83,6 +91,10 @@ function el(tag, props = {}, ...children) {
 }
 const sizeMB = (b) => (b / 1048576).toFixed(1) + " MB";
 const sizeHuman = (b) => b >= 1073741824 ? (b / 1073741824).toFixed(2) + " GB" : sizeMB(b);
+// Siempre en castellano, sin depender del idioma del navegador
+const fmtDate = (iso) => new Date(iso).toLocaleDateString("es-ES", { day: "numeric", month: "short", year: "numeric" });
+// Las variantes móvil y reloj de una misma app quedan seguidas (móvil primero)
+const byAppThenType = (x, y) => x.label.localeCompare(y.label, "es") || (x.type === "watch") - (y.type === "watch");
 function ago(iso) {
   const m = Math.max(0, Math.round((Date.now() - new Date(iso)) / 60000));
   if (m < 1) return "ahora mismo";
@@ -163,19 +175,20 @@ async function loadApps() {
     box.replaceChildren(el("div", { className: "empty", textContent: "Aún no hay apps. Sube tu primera APK." }));
     return;
   }
-  box.replaceChildren(...apps.map(appRow));
+  box.replaceChildren(...[...apps].sort(byAppThenType).map(appRow));
 }
 
 function appRow(a) {
   const wrap = el("div");
   const status = el("div", { className: "msg" });
-  const date = new Date(a.updatedAt).toLocaleString();
+  const date = fmtDate(a.updatedAt);
   const row = el("div", { className: "row" },
-    el("img", { src: a.iconUrl, alt: "" }),
-    el("div", { className: "meta" },
-      el("strong", { textContent: a.label }),
-      el("span", { className: "tag", textContent: a.type === "watch" ? "reloj" : "móvil" }),
-      el("small", { textContent: `${a.package} · v${a.versionName} (${a.versionCode}) · ${sizeMB(a.size)} · ${date}` })),
+    el("div", { className: "head" },
+      el("img", { src: a.iconUrl, alt: "" }),
+      el("div", { className: "meta" },
+        el("strong", { textContent: a.label }),
+        el("span", { className: "tag", textContent: a.type === "watch" ? "reloj" : "móvil" }),
+        el("small", { textContent: `${a.package} · v${a.versionName} (${a.versionCode}) · ${sizeMB(a.size)} · ${date}` }))),
     el("div", { className: "actions" },
       el("a", { href: a.apkUrl, textContent: "Descargar" }),
       el("button", { className: "secondary", textContent: "Editar", onclick: () => toggleEdit() }),
@@ -190,7 +203,7 @@ function appRow(a) {
     const cat = el("input", { type: "text", value: a.category || "", placeholder: "Categoría", maxLength: 40 });
     cat.setAttribute("list", "cats");
     const versBox = el("div", {}, ...(a.versions || []).map((v) => {
-      const line = el("div", { className: "ver" }, el("span", { textContent: `v${v.versionName} (${v.versionCode}) · ${new Date(v.updatedAt).toLocaleDateString()} · ${sizeMB(v.size)}` }),
+      const line = el("div", { className: "ver" }, el("span", { textContent: `v${v.versionName} (${v.versionCode}) · ${fmtDate(v.updatedAt)} · ${sizeMB(v.size)}` }),
         el("button", { className: "secondary", textContent: "Borrar", onclick: async () => {
           if (!confirm(`¿Borrar la versión ${v.versionName}?`)) return;
           const res = await fetch(`/api/apps/${a.id}/versions/${v.versionCode}`, { method: "DELETE", headers: auth() });
