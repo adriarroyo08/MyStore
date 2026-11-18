@@ -4,10 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MyStore</title>
+<meta name="description" content="Tienda de APKs autoalojada: sube, edita y descarga tus apps de móvil y reloj.">
+<meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#111418" media="(prefers-color-scheme: dark)">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <style>
-  :root { --bg:#f6f7f9; --card:#fff; --fg:#1f2328; --muted:#6b7280; --line:#e5e7eb; --accent:#1a73e8; --danger:#d93025; --ok:#0b8043; }
+  :root { --bg:#f6f7f9; --card:#fff; --fg:#1f2328; --muted:#4b5563; --line:#e5e7eb; --accent:#1b5e9e; --on-accent:#fff; --danger:#c5221f; --on-danger:#fff; --ok:#0b6b38; }
   @media (prefers-color-scheme: dark) {
-    :root { --bg:#111418; --card:#1b1f24; --fg:#e6e8eb; --muted:#9aa1a9; --line:#2b3138; --accent:#8ab4f8; --danger:#f28b82; --ok:#81c995; }
+    :root { --bg:#111418; --card:#1b1f24; --fg:#e6e8eb; --muted:#9aa1a9; --line:#2b3138; --accent:#a2c9ff; --on-accent:#00315c; --danger:#f28b82; --on-danger:#4a0d0a; --ok:#81c995; }
   }
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.4 system-ui, sans-serif; }
@@ -17,9 +21,9 @@
   label { display:block; font-size:13px; color:var(--muted); margin-bottom:4px; }
   input[type=password], input[type=text], input[list], textarea { width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:8px; background:transparent; color:inherit; font:inherit; }
   textarea { min-height:60px; resize:vertical; }
-  button { border:0; border-radius:16px; padding:6px 14px; font:inherit; font-size:13px; cursor:pointer; background:var(--accent); color:#fff; }
+  button { border:0; border-radius:16px; padding:6px 14px; font:inherit; font-size:13px; cursor:pointer; background:var(--accent); color:var(--on-accent); }
   button.secondary { background:transparent; color:var(--accent); border:1px solid var(--line); }
-  button.danger { background:var(--danger); }
+  button.danger { background:var(--danger); color:var(--on-danger); }
   #drop { border:2px dashed var(--line); border-radius:12px; padding:28px; text-align:center; color:var(--muted); cursor:pointer; margin:12px 0; }
   #drop.over { border-color:var(--accent); color:var(--accent); }
   .msg { font-size:13px; margin:4px 0; }
@@ -171,7 +175,7 @@ function appRow(a) {
   const status = el("div", { className: "msg" });
   const date = new Date(a.updatedAt).toLocaleString();
   const row = el("div", { className: "row" },
-    el("img", { src: a.iconUrl, alt: "" }),
+    el("img", { src: a.iconUrl, alt: a.label, width: 44, height: 44 }),
     el("div", { className: "meta" },
       el("strong", { textContent: a.label }),
       el("span", { className: "tag", textContent: a.type === "watch" ? "reloj" : "móvil" }),
@@ -203,7 +207,7 @@ function appRow(a) {
     const shotFile = el("input", { type: "file", accept: "image/png,image/jpeg,image/webp", multiple: true, hidden: true });
     const shotDrop = el("div", { className: "shotdrop", tabIndex: 0, role: "button", textContent: "Añadir capturas: arrastra imágenes o haz clic" });
     const showShots = (urls) => shotsBox.replaceChildren(...urls.map((u, i) => el("div", { className: "shot" },
-      el("img", { src: u + "?" + Date.now(), alt: "" }),
+      el("img", { src: u + "?" + Date.now(), alt: `Captura ${i + 1} de ${a.label}`, width: 96, height: 170 }),
       el("button", { className: "secondary", textContent: "Quitar", onclick: async () => {
         const res = await fetch(`/api/apps/${a.id}/screenshots/${i + 1}`, { method: "DELETE", headers: auth() });
         if (res.ok) { shotMsg.textContent = ""; showShots((await res.json()).screenshots); }
@@ -227,7 +231,7 @@ function appRow(a) {
     shotDrop.ondragover = (e) => { e.preventDefault(); shotDrop.classList.add("over"); };
     shotDrop.ondragleave = () => shotDrop.classList.remove("over");
     shotDrop.ondrop = (e) => { e.preventDefault(); shotDrop.classList.remove("over"); addShots([...e.dataTransfer.files]); };
-    const iconImg = el("img", { src: a.iconUrl + "?" + Date.now(), alt: "", width: 48, height: 48 });
+    const iconImg = el("img", { src: a.iconUrl + "?" + Date.now(), alt: `Icono de ${a.label}`, width: 48, height: 48 });
     const iconMsg = el("div", { className: "msg" });
     const iconFile = el("input", { type: "file", accept: "image/png,image/jpeg,image/webp" });
     iconFile.onchange = async () => {
