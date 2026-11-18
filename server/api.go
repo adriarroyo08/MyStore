@@ -39,6 +39,9 @@ const (
 //go:embed web/index.html
 var adminPage []byte
 
+//go:embed web/favicon.svg
+var faviconSVG []byte
+
 type versionJSON struct {
 	Version
 	APKURL string `json:"apkUrl"`
@@ -119,6 +122,12 @@ func NewHandler(s *Store, token string, maxUploadBytes int64) http.Handler {
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Write(adminPage)
+	})
+
+	mux.HandleFunc("GET /favicon.svg", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/svg+xml")
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+		w.Write(faviconSVG)
 	})
 
 	mux.HandleFunc("GET /api/apps", func(w http.ResponseWriter, r *http.Request) {
