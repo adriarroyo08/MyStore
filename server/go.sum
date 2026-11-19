@@ -2,8 +2,8 @@ github.com/avast/apkparser v0.0.0-20251022140151-7294e274bf65 h1:PWsG673uVG5/lNT
 github.com/avast/apkparser v0.0.0-20251022140151-7294e274bf65/go.mod h1:3F9A8btIerUcuy7Fmno+g/nIk4ELKJ6NCs2/KK1bvLs=
 github.com/avast/apkverifier v0.0.0-20260710162049-d0e1a791cd5a h1:8chZxVfT6jnpiDC7tGMiWbkmiPWSZrRwBi7+fUkrJQ0=
 github.com/avast/apkverifier v0.0.0-20260710162049-d0e1a791cd5a/go.mod h1:LRDgSMX7AD3MdV5MlmZ9Sly1tcf1Dqa6olfKg3X9DB8=
-github.com/klauspost/compress v1.18.0 h1:c/Cqfb0r+Yi+JtIEq73FWXVkRonBlf0CRNYc8Zttxdo=
-github.com/klauspost/compress v1.18.0/go.mod h1:2Pp+KzxcywXVXMr50+X0Q/Lsb43OQHYWRCY2AiWywWQ=
+github.com/klauspost/compress v1.18.7 h1:aUyZsS4kH3QTKurYhAOwAHxllVPnOthb3vPfnF1Ehjw=
+github.com/klauspost/compress v1.18.7/go.mod h1:cwPg85FWrGar70rWktvGQj8/hthj3wpl0PGDogxkrSQ=
 golang.org/x/image v0.47.0 h1:za/8gVz++PPZqmZJBNSISICN5Rrj5zixP/8K++fgmqo=
 golang.org/x/image v0.47.0/go.mod h1:IkN5o4A7vq55vXN8FWjjnhg9Rs2GOtffqsSi9mWAKYE=
 golang.org/x/sys v0.49.0 h1:XbzkgYJHdqh/8m2Uu0W/dQv8nktxx4BFHp1M0gROTXA=
