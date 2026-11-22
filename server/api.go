@@ -11,12 +11,14 @@ import (
 	"image/png"
 	"io"
 	"log"
+	"mime"
 	"net/http"
 	"os"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // shotIdxRe admite solo 1..999 sin ceros ni signos; lo demás es 404.
@@ -62,6 +64,22 @@ func withURLs(a App) appJSON {
 		vs[i] = versionJSON{v, fmt.Sprintf("/api/apps/%s/versions/%d/apk", a.ID, v.VersionCode)}
 	}
 	return appJSON{App: a, IconURL: "/api/apps/" + a.ID + "/icon", APKURL: "/api/apps/" + a.ID + "/apk", Screenshots: shots, Versions: vs}
+}
+
+// apkDisposition da el Content-Disposition de una descarga. versionName viene del manifest y
+// puede traer comillas, «;» o no ASCII: FormatMediaType entrecomilla o usa filename* (RFC 2231).
+// Los caracteres de control se cambian por «_».
+func apkDisposition(pkg, versionName string) string {
+	name := strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return '_'
+		}
+		return r
+	}, pkg+"-"+versionName+".apk")
+	if h := mime.FormatMediaType("attachment", map[string]string{"filename": name}); h != "" {
+		return h
+	}
+	return "attachment"
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -157,7 +175,7 @@ func NewHandler(s *Store, token string, maxUploadBytes int64) http.Handler {
 		}
 		defer f.Close()
 		w.Header().Set("Content-Type", "application/vnd.android.package-archive")
-		w.Header().Set("Content-Disposition", `attachment; filename="`+pkg+"-"+versionName+`.apk"`)
+		w.Header().Set("Content-Disposition", apkDisposition(pkg, versionName))
 		http.ServeContent(w, r, "", mod, f)
 	}
 
