@@ -26,6 +26,11 @@ fun sampleSize(width: Int, height: Int, target: Int): Int {
     return s
 }
 
+fun iconKey(app: StoreApp) = "${app.id}:${app.versionCode}"
+
+// Iconos que fallaron y siguen en el catálogo con esa misma versión: se vuelven a pedir al refrescar
+fun iconsToRetry(failed: Set<String>, apps: List<StoreApp>): List<StoreApp> = apps.filter { iconKey(it) in failed }
+
 sealed interface Screen {
     data object Setup : Screen
     data object List : Screen
@@ -49,6 +54,8 @@ open class StoreViewModel(app: Application, private val type: String, private va
     var installStates by mutableStateOf<Map<String, InstallState>>(emptyMap())
         private set
     val icons = mutableStateMapOf<String, ImageBitmap?>()
+    // Fallos de red al bajar iconos: se quedan con el genérico hasta el próximo refresco con éxito
+    private val iconFailed = HashSet<String>()
 
     val storeUrl get() = settings.storeUrl.orEmpty()
     private val device = deviceName(app, type)
@@ -81,6 +88,7 @@ open class StoreViewModel(app: Application, private val type: String, private va
                 clearShots()
                 error = null
                 refreshInstalled()
+                retryIcons()
                 withContext(Dispatchers.IO) { installer.pruneCache(apps) }
             } catch (e: StoreException) {
                 error = e.message
@@ -99,6 +107,7 @@ open class StoreViewModel(app: Application, private val type: String, private va
             settings.storeUrl = url
             client = c
             icons.clear()
+            iconFailed.clear()
             clearShots()
             error = null
             refreshInstalled()
@@ -110,7 +119,7 @@ open class StoreViewModel(app: Application, private val type: String, private va
     }
 
     fun loadIcon(app: StoreApp) {
-        val key = "${app.id}:${app.versionCode}"
+        val key = iconKey(app)
         if (icons.containsKey(key)) return
         icons[key] = null
         val c = client ?: return
@@ -118,8 +127,16 @@ open class StoreViewModel(app: Application, private val type: String, private va
             try {
                 val b = c.icon(app)
                 icons[key] = BitmapFactory.decodeByteArray(b, 0, b.size)?.asImageBitmap()
-            } catch (e: Exception) { /* se queda el icono genérico */ }
+            } catch (e: Exception) {
+                iconFailed.add(key) // se queda el icono genérico
+            }
         }
+    }
+
+    private fun retryIcons() {
+        val retry = iconsToRetry(iconFailed, apps)
+        iconFailed.clear()
+        retry.forEach { icons.remove(iconKey(it)); loadIcon(it) }
     }
 
     // Capturas: caché LRU en bytes; shotTick fuerza la recomposición al cambiarla
