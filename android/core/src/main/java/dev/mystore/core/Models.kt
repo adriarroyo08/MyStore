@@ -71,9 +71,11 @@ fun parseApps(json: String, baseUrl: String): List<StoreApp> {
 private fun fold(s: String) =
     Normalizer.normalize(s, Normalizer.Form.NFD).replace(Regex("\\p{M}+"), "").lowercase()
 
+// Nombre o paquete primero; luego lo que solo casa por categoría o descripción
 fun List<StoreApp>.search(q: String): List<StoreApp> {
     val n = fold(q.trim())
-    return filter { fold(it.label).contains(n) || fold(it.pkg).contains(n) }
+    val (byName, rest) = partition { fold(it.label).contains(n) || fold(it.pkg).contains(n) }
+    return byName + rest.filter { fold(it.category).contains(n) || fold(it.description).contains(n) }
 }
 
 // Primera línea no vacía de la descripción, para subtítulos de una línea
