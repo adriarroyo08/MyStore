@@ -121,6 +121,18 @@ func NewHandler(s *Store, token string, maxUploadBytes int64) http.Handler {
 		w.Write(adminPage)
 	})
 
+	// Sano si se puede leer el directorio de datos (disco montado y con permisos).
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		if _, err := os.ReadDir(s.apps); err != nil {
+			log.Printf("healthz: %v", err)
+			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Write([]byte("sin acceso a los datos\n"))
+			return
+		}
+		w.Write([]byte("ok\n"))
+	})
+
 	mux.HandleFunc("GET /api/apps", func(w http.ResponseWriter, r *http.Request) {
 		s.SeenDevice(r.Header.Get("X-MyStore-Device"))
 		apps, err := s.List(r.URL.Query().Get("type"))
