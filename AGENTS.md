@@ -6,6 +6,13 @@ Instrucciones comunes para cualquier agente (Claude Code, Codex, Gemini/Antigrav
 
 Tienda de APKs autoalojada: servidor Go (`server/`, un binario en Docker, sin base de datos) y apps Android y Wear OS en Kotlin + Compose (`android/mobile`, `android/wear`, lógica común en `android/core`). Detalle en `README.md`.
 
+## Entorno del agente
+
+- MyStore no registra MCP propios. Claude Code permite solo el CodeGraph instalado a nivel de usuario y activa Superpowers para los planes de `docs/superpowers/`.
+- Codex aplica `.codex/config.toml` en un checkout de confianza. Desactiva los MCP y plugins de usuario enumerados en ese archivo y conserva CodeGraph si está instalado. Si añades otro MCP de usuario, puedes desactivarlo para MyStore en el mismo archivo.
+- `poco-adb` y `ticwatch-adb` sirven para probar en Android y Wear OS, `publicar-mystore` para publicar APK por encargo e `infra-oracle` para consultar el despliegue. Claude Code las encuentra en `.claude/skills/` y Codex en `.agents/skills/`.
+- Claude Code oculta las skills personales enumeradas en `skillOverrides`. Codex puede seguir mostrando las skills de usuario. Mantén URLs, rutas de producción y credenciales en la configuración local.
+
 ## Verificar
 
 ```bash

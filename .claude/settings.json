@@ -1,0 +1,32 @@
+{
+  "enabledMcpjsonServers": [],
+  "allowedMcpServers": [
+    {
+      "serverName": "codegraph"
+    }
+  ],
+  "disableClaudeAiConnectors": true,
+  "enabledPlugins": {
+    "Notion@claude-plugins-official": false,
+    "superpowers@claude-plugins-official": true,
+    "frontend-design@claude-plugins-official": false,
+    "playwright@claude-plugins-official": false,
+    "code-review@claude-plugins-official": false,
+    "code-simplifier@claude-plugins-official": false,
+    "commit-commands@claude-plugins-official": false,
+    "stripe@claude-plugins-official": false,
+    "claude-hud@claude-hud": false,
+    "router@awesome-gamedev-agent-skills": false,
+    "godot@awesome-gamedev-agent-skills": false,
+    "ponytail@ponytail": false
+  },
+  "skillOverrides": {
+    "ahorro-tokens": "off",
+    "gemini-worker": "off",
+    "orquestar-issues": "off",
+    "proyecto-nuevo": "off",
+    "stripe-best-practices": "off",
+    "stripe-projects": "off",
+    "upgrade-stripe": "off"
+  }
+}
