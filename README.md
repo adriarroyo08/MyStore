@@ -90,6 +90,22 @@ sequenceDiagram
     OS-->>App: App actualizada ✔
 ```
 
+### Canales: estable y beta
+
+Una **beta** es una versión de prueba, más nueva que la estable, que no la sustituye.
+
+| Paso | Cómo |
+|---|---|
+| Publicar una beta | Sube la APK con `channel=beta`: casilla «Subir como beta» en la web, `channel: beta` en la Action, o `-F channel=beta` con `curl`. La app debe tener ya una versión estable |
+| Recibirla | En el móvil o el reloj, Ajustes → **Recibir betas**. Quien no lo active sigue viendo la estable |
+| Volver a la estable | Desde la ficha de la app, en versiones anteriores |
+| Publicarla para todos | En la web: Editar → «Publicar como estable» (o sube la misma versión sin `channel`) |
+| Retirarla | En la web: Editar → «Retirar» |
+
+Solo hay una beta por app: una beta nueva sustituye a la anterior, y la beta desaparece cuando la estable la alcanza. Con iOS funciona igual, pero las fuentes de AltStore/SideStore solo listan la estable.
+
+> ⚠️ Un canal beta **no es privado**: como el resto del catálogo, cualquiera que conozca la URL de la tienda puede descargar la beta. Si necesitas betas cerradas, protege la tienda entera (VPN, Cloudflare Access…).
+
 ## 🧩 Funciones
 
 | | | |
@@ -97,6 +113,7 @@ sequenceDiagram
 | 🆔 **Identidad paquete + tipo**<br><sub>La versión móvil y la de reloj de una app conviven sin pisarse</sub> | 🔏 **Control de firma**<br><sub>Rechaza APKs firmadas con otra clave</sub> | ⬆️ **Sin downgrades**<br><sub>El `versionCode` siempre tiene que subir</sub> |
 | 🎨 **Iconos de verdad**<br><sub>Extrae PNG y rasteriza adaptativos, vectoriales y WebP</sub> | 🖼️ **Capturas y descripción**<br><sub>Ficha tipo Play Store (hasta 8 capturas)</sub> | 🧷 **Icono personalizado**<br><sub>Para APKs que no traen icono</sub> |
 | 💅 **Material You**<br><sub>Colores dinámicos, tema claro/oscuro, búsqueda y filtros</sub> | ⌚ **App Wear OS**<br><sub>Lista redonda, instalar sin adb</sub> | 🔔 **Avisos en segundo plano**<br><sub>Comprueba cada 6 h y notifica solo lo nuevo</sub> |
+| 🧪 **Canal beta**<br><sub>Versiones de prueba que no pisan la estable</sub> | 🔄 **Actualizaciones automáticas**<br><sub>Cargando y con WiFi, sin tocar nada</sub> | 🍎 **También iOS**<br><sub>`.ipa` por Safari o AltStore/SideStore</sub> |
 | ♻️ **Se actualiza sola**<br><sub>Las apps tienda aparecen en su propia lista</sub> | 🤖 **GitHub Action**<br><sub>Sube la APK en cada release</sub> | 🐳 **Docker + sin BD**<br><sub>Un binario, un volumen, ficheros JSON</sub> |
 
 ## 🚀 Empezar en 5 minutos
@@ -260,7 +277,8 @@ Sin base de datos: todo son ficheros dentro de `MYSTORE_DATA`. Para hacer copia 
 data/
 └── apps/
     ├── com.ejemplo.app-phone/
-    │   ├── app.apk       # última versión
+    │   ├── app.apk       # última versión estable
+    │   ├── beta.apk      # versión beta, si hay
     │   ├── icon.png      # extraído de la APK o personalizado
     │   ├── meta.json     # paquete, versión, firma, notas, descripción…
     │   └── shots/        # capturas

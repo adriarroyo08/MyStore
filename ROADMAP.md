@@ -18,10 +18,10 @@ Al preparar esta hoja de ruta no hay issues ni épicas abiertas en MyStore. Los 
 ## Diciembre de 2026: canales y notas para las betas
 
 - [ ] Definir y desglosar en issues verificables el comportamiento de los canales estable y beta: publicación, selección y actualización en móvil y reloj.
-- [ ] Habilitar los canales estable y beta y comprobar que una publicación o actualización de un canal no sustituye la del otro.
+- [x] Habilitar los canales estable y beta y comprobar que una publicación o actualización de un canal no sustituye la del otro.
 - [ ] Asegurar que las notas de versión enviadas desde CI sean visibles al consultar cada versión en la web, el móvil y Wear OS.
 - [ ] Validar el recorrido completo desde una publicación en CI hasta la consulta de sus notas y la instalación en el canal correspondiente.
-- [ ] Documentar cómo publicar y consumir cada canal y sus límites de acceso: un canal beta por sí solo no convierte las descargas en privadas.
+- [x] Documentar cómo publicar y consumir cada canal y sus límites de acceso: un canal beta por sí solo no convierte las descargas en privadas.
 
 ## Enero de 2027: preparar la beta de WorkStation
 
