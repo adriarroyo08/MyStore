@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	_ "embed"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"image"
@@ -66,6 +67,45 @@ func withURLs(a App) appJSON {
 	}
 	return appJSON{App: a, IconURL: "/api/apps/" + a.ID + "/icon", APKURL: "/api/apps/" + a.ID + "/apk", Screenshots: shots, Versions: vs}
 }
+
+// baseURL es la URL pública del servidor; detrás de un proxy (Cloudflare Tunnel) manda X-Forwarded-*.
+// iOS exige https, así que no se asume nada: se respeta lo que diga el proxy.
+func baseURL(r *http.Request) string {
+	first := func(h string) string { v, _, _ := strings.Cut(r.Header.Get(h), ","); return strings.TrimSpace(v) }
+	scheme, host := first("X-Forwarded-Proto"), first("X-Forwarded-Host")
+	if scheme == "" {
+		scheme = "http"
+		if r.TLS != nil {
+			scheme = "https"
+		}
+	}
+	if host == "" {
+		host = r.Host
+	}
+	return scheme + "://" + host
+}
+
+func xmlEsc(s string) string {
+	var b bytes.Buffer
+	xml.EscapeText(&b, []byte(s))
+	return b.String()
+}
+
+const manifestTmpl = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict><key>items</key><array><dict>
+<key>assets</key><array>
+<dict><key>kind</key><string>software-package</string><key>url</key><string>%s</string></dict>
+<dict><key>kind</key><string>display-image</string><key>url</key><string>%s</string></dict>
+<dict><key>kind</key><string>full-size-image</string><key>url</key><string>%s</string></dict>
+</array>
+<key>metadata</key><dict>
+<key>bundle-identifier</key><string>%s</string>
+<key>bundle-version</key><string>%s</string>
+<key>kind</key><string>software</string>
+<key>title</key><string>%s</string>
+</dict></dict></array></dict></plist>
+`
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -158,15 +198,19 @@ func NewHandler(s *Store, token string, maxUploadBytes int64) http.Handler {
 		http.ServeFile(w, r, path)
 	})
 
-	serveAPK := func(w http.ResponseWriter, r *http.Request, path, pkg, versionName string, mod time.Time) {
+	serveAPK := func(w http.ResponseWriter, r *http.Request, path string, a App, versionName string, mod time.Time) {
 		f, err := os.Open(path)
 		if err != nil {
 			storeError(w, err)
 			return
 		}
 		defer f.Close()
-		w.Header().Set("Content-Type", "application/vnd.android.package-archive")
-		w.Header().Set("Content-Disposition", `attachment; filename="`+pkg+"-"+versionName+`.apk"`)
+		ctype, ext := "application/vnd.android.package-archive", ".apk"
+		if a.Type == "ios" {
+			ctype, ext = "application/octet-stream", ".ipa"
+		}
+		w.Header().Set("Content-Type", ctype)
+		w.Header().Set("Content-Disposition", `attachment; filename="`+a.Package+"-"+versionName+ext+`"`)
 		http.ServeContent(w, r, "", mod, f)
 	}
 
@@ -182,7 +226,7 @@ func NewHandler(s *Store, token string, maxUploadBytes int64) http.Handler {
 			storeError(w, err)
 			return
 		}
-		serveAPK(w, r, path, a.Package, a.VersionName, a.UpdatedAt)
+		serveAPK(w, r, path, a, a.VersionName, a.UpdatedAt)
 	})
 
 	mux.HandleFunc("GET /api/apps/{id}/versions/{code}/apk", func(w http.ResponseWriter, r *http.Request) {
@@ -202,7 +246,67 @@ func NewHandler(s *Store, token string, maxUploadBytes int64) http.Handler {
 			storeError(w, err)
 			return
 		}
-		serveAPK(w, r, path, a.Package, v.VersionName, v.UpdatedAt)
+		serveAPK(w, r, path, a, v.VersionName, v.UpdatedAt)
+	})
+
+	mux.HandleFunc("GET /api/apps/{id}/manifest.plist", func(w http.ResponseWriter, r *http.Request) {
+		a, err := s.Get(r.PathValue("id"))
+		if err == nil && a.Type != "ios" {
+			err = ErrNotFound
+		}
+		if err != nil {
+			storeError(w, err)
+			return
+		}
+		base := baseURL(r) + "/api/apps/" + a.ID
+		w.Header().Set("Content-Type", "text/xml; charset=utf-8")
+		fmt.Fprintf(w, manifestTmpl, xmlEsc(base+"/apk"), xmlEsc(base+"/icon"), xmlEsc(base+"/icon"),
+			xmlEsc(a.Package), xmlEsc(a.VersionName), xmlEsc(a.Label))
+	})
+
+	mux.HandleFunc("GET /api/altstore.json", func(w http.ResponseWriter, r *http.Request) {
+		apps, err := s.List("ios")
+		if err != nil {
+			storeError(w, err)
+			return
+		}
+		base := baseURL(r)
+		host := base[strings.Index(base, "://")+3:]
+		if h, _, ok := strings.Cut(host, ":"); ok {
+			host = h
+		}
+		parts := strings.Split(host, ".")
+		for i, j := 0, len(parts)-1; i < j; i, j = i+1, j-1 {
+			parts[i], parts[j] = parts[j], parts[i]
+		}
+		type ver struct {
+			Version              string `json:"version"`
+			BuildVersion         string `json:"buildVersion"`
+			Date                 string `json:"date"`
+			LocalizedDescription string `json:"localizedDescription"`
+			DownloadURL          string `json:"downloadURL"`
+			Size                 int64  `json:"size"`
+			MinOSVersion         string `json:"minOSVersion"`
+		}
+		type app struct {
+			Name                 string `json:"name"`
+			BundleIdentifier     string `json:"bundleIdentifier"`
+			DeveloperName        string `json:"developerName"`
+			LocalizedDescription string `json:"localizedDescription"`
+			IconURL              string `json:"iconURL"`
+			Versions             []ver  `json:"versions"`
+		}
+		out := make([]app, len(apps))
+		for i, a := range apps {
+			u := base + "/api/apps/" + a.ID
+			vs := []ver{{a.VersionName, strconv.FormatInt(a.VersionCode, 10), a.UpdatedAt.Format(time.RFC3339), a.Notes, u + "/apk", a.Size, a.MinOS}}
+			for _, v := range a.Versions {
+				vs = append(vs, ver{v.VersionName, strconv.FormatInt(v.VersionCode, 10), v.UpdatedAt.Format(time.RFC3339), v.Notes,
+					fmt.Sprintf("%s/versions/%d/apk", u, v.VersionCode), v.Size, a.MinOS})
+			}
+			out[i] = app{a.Label, a.Package, "MyStore", a.Description, u + "/icon", vs}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"name": "MyStore", "identifier": strings.Join(parts, "."), "sourceURL": base + "/api/altstore.json", "apps": out})
 	})
 
 	mux.HandleFunc("POST /api/apps", auth(func(w http.ResponseWriter, r *http.Request) {

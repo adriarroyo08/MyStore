@@ -13,16 +13,17 @@ import (
 	"github.com/avast/apkverifier"
 )
 
-var ErrInvalidAPK = errors.New("el fichero no es una APK válida")
+var ErrInvalidAPK = errors.New("el fichero no es una APK ni una IPA válida")
 
 type Meta struct {
 	Package     string `json:"package"`
-	Type        string `json:"type"` // "phone" | "watch"
+	Type        string `json:"type"` // "phone" | "watch" | "ios"
 	Label       string `json:"label"`
 	VersionCode int64  `json:"versionCode"`
 	VersionName string `json:"versionName"`
 	MinSDK      int    `json:"minSdk"`
 	CertSHA256  string `json:"certSha256"`
+	MinOS       string `json:"minOS,omitempty"` // solo iOS
 	Size        int64  `json:"size"`
 }
 
