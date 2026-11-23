@@ -12,12 +12,14 @@ import (
 	"image/png"
 	"io"
 	"log"
+	"mime"
 	"net/http"
 	"os"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // shotIdxRe admite solo 1..999 sin ceros ni signos; lo demás es 404.
@@ -111,6 +113,22 @@ const manifestTmpl = `<?xml version="1.0" encoding="UTF-8"?>
 <key>title</key><string>%s</string>
 </dict></dict></array></dict></plist>
 `
+
+// apkDisposition da el Content-Disposition de una descarga. versionName viene del manifest y
+// puede traer comillas, «;» o no ASCII: FormatMediaType entrecomilla o usa filename* (RFC 2231).
+// Los caracteres de control se cambian por «_».
+func apkDisposition(pkg, versionName, ext string) string {
+	name := strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return '_'
+		}
+		return r
+	}, pkg+"-"+versionName+ext)
+	if h := mime.FormatMediaType("attachment", map[string]string{"filename": name}); h != "" {
+		return h
+	}
+	return "attachment"
+}
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -215,7 +233,7 @@ func NewHandler(s *Store, token string, maxUploadBytes int64) http.Handler {
 			ctype, ext = "application/octet-stream", ".ipa"
 		}
 		w.Header().Set("Content-Type", ctype)
-		w.Header().Set("Content-Disposition", `attachment; filename="`+a.Package+"-"+versionName+ext+`"`)
+		w.Header().Set("Content-Disposition", apkDisposition(a.Package, versionName, ext))
 		if r.Method == http.MethodGet && r.Header.Get("Range") == "" { // las reanudaciones no cuentan dos veces
 			s.CountDownload(a.ID)
 		}

@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/png"
 	"io"
+	"mime"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -608,5 +609,21 @@ func TestDownloadCount(t *testing.T) {
 	upload(t, srv, testToken, "phone-v2.apk") // una versión nueva no pone el contador a cero
 	if n := listApps(t, srv, "")[0]["downloads"]; n != float64(2) {
 		t.Fatalf("tras actualizar: %v", n)
+	}
+}
+
+// versionName sale del manifest: comillas, espacios o no ASCII no deben romper la cabecera.
+func TestAPKDisposition(t *testing.T) {
+	for _, c := range []struct{ version, want string }{
+		{"1.0", "dev.x-1.0.apk"},
+		{`1.0 "beta"; x=y`, `dev.x-1.0 "beta"; x=y.apk`},
+		{"2.0-ñ", "dev.x-2.0-ñ.apk"},
+		{"1\r\nSet-Cookie: a", "dev.x-1__Set-Cookie: a.apk"},
+	} {
+		h := apkDisposition("dev.x", c.version, ".apk")
+		typ, p, err := mime.ParseMediaType(h)
+		if err != nil || typ != "attachment" || p["filename"] != c.want {
+			t.Errorf("%q: %q → %q %q %v", c.version, h, typ, p["filename"], err)
+		}
 	}
 }
