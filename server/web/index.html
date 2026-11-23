@@ -210,7 +210,7 @@ function appRow(a) {
     el("div", { className: "meta" },
       el("strong", { textContent: a.label }),
       el("span", { className: "tag", textContent: typeName[a.type] || a.type }),
-      el("small", { textContent: `${a.package} · v${a.versionName} (${a.versionCode}) · ${sizeMB(a.size)} · ${date}` }),
+      el("small", { textContent: `${a.package} · v${a.versionName} (${a.versionCode}) · ${sizeMB(a.size)} · ${date}${a.downloads ? ` · ${a.downloads} descarga${a.downloads === 1 ? "" : "s"}` : ""}` }),
       ...(a.beta ? [el("small", {}, `Beta v${a.beta.versionName} (${a.beta.versionCode}) · `, el("a", { href: a.beta.apkUrl, textContent: "descargar" }))] : []),
       ...(a.notes || (a.beta && a.beta.notes) ? [el("details", {}, el("summary", { textContent: "Novedades" }),
         ...(a.notes ? [el("p", { className: "notes", textContent: a.notes })] : []),

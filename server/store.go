@@ -49,21 +49,23 @@ type App struct {
 	Category    string    `json:"category"`
 	Notes       string    `json:"notes"`
 	HasIcon     bool      `json:"hasIcon"`
-	CustomIcon  bool      `json:"customIcon"` // icon.png lo subió el admin, no viene de la APK
-	Shots       []string  `json:"shots"` // nombres de fichero en shots/, en orden de subida
-	Versions    []Version `json:"versions"` // anteriores, de la más nueva a la más vieja
+	CustomIcon  bool      `json:"customIcon"`     // icon.png lo subió el admin, no viene de la APK
+	Shots       []string  `json:"shots"`          // nombres de fichero en shots/, en orden de subida
+	Versions    []Version `json:"versions"`       // anteriores, de la más nueva a la más vieja
 	Beta        *Version  `json:"beta,omitempty"` // versión de prueba más nueva que la estable; su APK es beta.apk
 	UpdatedAt   time.Time `json:"updatedAt"`
+	Downloads   int64     `json:"downloads"` // descargas completas de cualquier versión; vive en downloads.json, no en meta.json
 }
 
 // Store guarda cada app en apps/<id>/{app.apk, icon.png, meta.json}.
 // ponytail: un solo mutex para todas las escrituras; basta para una tienda personal.
 type Store struct {
-	root    string // raíz de datos; apps/ y devices.json cuelgan de aquí
-	apps    string
-	mu      sync.Mutex
-	devMu   sync.Mutex
-	devices map[string]time.Time
+	root      string // raíz de datos; apps/ y devices.json cuelgan de aquí
+	apps      string
+	mu        sync.Mutex
+	devMu     sync.Mutex
+	devices   map[string]time.Time
+	downloads map[string]int64 // por id de app; también bajo devMu
 }
 
 // Device es un cliente que ha consultado el catálogo (cabecera X-MyStore-Device).
@@ -99,7 +101,10 @@ func NewStore(dir string) (*Store, error) {
 		}
 		os.RemoveAll(filepath.Join(apps, name))
 	}
-	s := &Store{root: dir, apps: apps, devices: map[string]time.Time{}}
+	s := &Store{root: dir, apps: apps, devices: map[string]time.Time{}, downloads: map[string]int64{}}
+	if data, err := os.ReadFile(filepath.Join(dir, "downloads.json")); err == nil {
+		json.Unmarshal(data, &s.downloads)
+	}
 	if data, err := os.ReadFile(filepath.Join(dir, "devices.json")); err == nil {
 		json.Unmarshal(data, &s.devices) // si está corrupto se empieza de cero
 	}
@@ -126,6 +131,20 @@ func (s *Store) SeenDevice(device string) {
 		tmp := filepath.Join(s.root, "devices.json.tmp")
 		if os.WriteFile(tmp, data, 0o644) == nil {
 			os.Rename(tmp, filepath.Join(s.root, "devices.json"))
+		}
+	}
+}
+
+// CountDownload suma una descarga a la app.
+// ponytail: reescribe downloads.json en cada descarga; agrupar escrituras si la tienda tuviera mucho tráfico.
+func (s *Store) CountDownload(id string) {
+	s.devMu.Lock()
+	defer s.devMu.Unlock()
+	s.downloads[id]++
+	if data, err := json.Marshal(s.downloads); err == nil {
+		tmp := filepath.Join(s.root, "downloads.json.tmp")
+		if os.WriteFile(tmp, data, 0o644) == nil {
+			os.Rename(tmp, filepath.Join(s.root, "downloads.json"))
 		}
 	}
 }
@@ -176,7 +195,13 @@ func (s *Store) Get(id string) (App, error) {
 		return App{}, err
 	}
 	var a App
-	return a, json.Unmarshal(data, &a)
+	if err := json.Unmarshal(data, &a); err != nil {
+		return App{}, err
+	}
+	s.devMu.Lock()
+	a.Downloads = s.downloads[id]
+	s.devMu.Unlock()
+	return a, nil
 }
 
 // List devuelve las apps de un tipo ("phone", "watch", "ios" o "" para todas), ordenadas por nombre.
@@ -437,6 +462,9 @@ func (s *Store) Delete(id string) error {
 	if _, err := s.Get(id); err != nil {
 		return err
 	}
+	s.devMu.Lock()
+	delete(s.downloads, id) // se persiste con la siguiente descarga
+	s.devMu.Unlock()
 	d, _ := s.dir(id)
 	return os.RemoveAll(d)
 }

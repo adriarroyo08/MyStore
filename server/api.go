@@ -216,6 +216,9 @@ func NewHandler(s *Store, token string, maxUploadBytes int64) http.Handler {
 		}
 		w.Header().Set("Content-Type", ctype)
 		w.Header().Set("Content-Disposition", `attachment; filename="`+a.Package+"-"+versionName+ext+`"`)
+		if r.Method == http.MethodGet && r.Header.Get("Range") == "" { // las reanudaciones no cuentan dos veces
+			s.CountDownload(a.ID)
+		}
 		http.ServeContent(w, r, "", mod, f)
 	}
 

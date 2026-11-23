@@ -582,3 +582,31 @@ func TestBetaAPI(t *testing.T) {
 		t.Errorf("beta apk sin beta: %d", res.StatusCode)
 	}
 }
+
+func TestDownloadCount(t *testing.T) {
+	srv, s := newTestServer(t, 1<<20)
+	upload(t, srv, testToken, "phone-v1.apk")
+	const url = "/api/apps/com.example.demo-phone/apk"
+	do(t, "GET", srv.URL+url, "", nil, "")
+	do(t, "GET", srv.URL+url, "", nil, "")
+	do(t, "HEAD", srv.URL+url, "", nil, "") // ni HEAD ni las reanudaciones cuentan
+	req, _ := http.NewRequest("GET", srv.URL+url, nil)
+	req.Header.Set("Range", "bytes=10-")
+	if res, err := http.DefaultClient.Do(req); err == nil {
+		res.Body.Close()
+	}
+	if n := listApps(t, srv, "")[0]["downloads"]; n != float64(2) {
+		t.Fatalf("downloads = %v", n)
+	}
+	s2, err := NewStore(s.root) // sobrevive a un reinicio
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a, _ := s2.Get("com.example.demo-phone"); a.Downloads != 2 {
+		t.Fatalf("tras reinicio: %d", a.Downloads)
+	}
+	upload(t, srv, testToken, "phone-v2.apk") // una versión nueva no pone el contador a cero
+	if n := listApps(t, srv, "")[0]["downloads"]; n != float64(2) {
+		t.Fatalf("tras actualizar: %v", n)
+	}
+}
