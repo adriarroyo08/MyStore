@@ -48,6 +48,8 @@
   a { color:var(--accent); }
   .tabs { display:flex; gap:6px; margin-bottom:8px; }
   .tabs button { background:transparent; color:var(--accent); border:1px solid var(--line); }
+  details { font-size:13px; color:var(--muted); margin-top:2px; } summary { cursor:pointer; }
+  .notes { white-space:pre-wrap; margin:4px 0; }
   .tabs button.on { background:var(--accent); color:var(--on-accent); }
   a.btn { background:var(--accent); color:var(--on-accent); border-radius:16px; padding:6px 14px; font-size:13px; text-decoration:none; }
   a.btn.big { padding:10px 20px; font-size:15px; font-weight:600; }
@@ -209,7 +211,10 @@ function appRow(a) {
       el("strong", { textContent: a.label }),
       el("span", { className: "tag", textContent: typeName[a.type] || a.type }),
       el("small", { textContent: `${a.package} · v${a.versionName} (${a.versionCode}) · ${sizeMB(a.size)} · ${date}` }),
-      ...(a.beta ? [el("small", {}, `Beta v${a.beta.versionName} (${a.beta.versionCode}) · `, el("a", { href: a.beta.apkUrl, textContent: "descargar" }))] : [])),
+      ...(a.beta ? [el("small", {}, `Beta v${a.beta.versionName} (${a.beta.versionCode}) · `, el("a", { href: a.beta.apkUrl, textContent: "descargar" }))] : []),
+      ...(a.notes || (a.beta && a.beta.notes) ? [el("details", {}, el("summary", { textContent: "Novedades" }),
+        ...(a.notes ? [el("p", { className: "notes", textContent: a.notes })] : []),
+        ...(a.beta && a.beta.notes ? [el("p", { className: "notes", textContent: `Beta ${a.beta.versionName}: ${a.beta.notes}` })] : []))] : [])),
     el("div", { className: "actions" },
       ...(a.type === "ios" ? [el("a", { className: isIOS ? "btn big" : "btn", textContent: "Instalar en iPhone",
         href: "itms-services://?action=download-manifest&url=" + encodeURIComponent(location.origin + `/api/apps/${a.id}/manifest.plist`) })] : []),
