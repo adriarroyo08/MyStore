@@ -53,6 +53,18 @@ class ModelsTest {
         assertEquals(emptyList<StoreApp>(), listOf(app).search("zzz"))
     }
 
+    @Test fun searchAlsoMatchesCategoryAndDescriptionAfterNames() {
+        fun app(id: String, label: String, desc: String = "", cat: String = "") =
+            StoreApp(id, "dev.$id", "phone", label, 1, "1", 1, desc, "", "", "", category = cat)
+        val podcasts = app("p", "Escucha", desc = "Tus pódcast sin anuncios")
+        val juego = app("j", "Tetrix", cat = "Juegos")
+        val pod = app("x", "Podcast Addict")
+        val apps = listOf(podcasts, juego, pod)
+        assertEquals(listOf(juego), apps.search("juegos"))
+        // primero el que lo lleva en el nombre, luego el de la descripción
+        assertEquals(listOf(pod, podcasts), apps.search("podcast"))
+    }
+
     @Test fun parsesVersionsAndBuildsInstallableCopy() {
         val j = """[{"id":"a-phone","package":"a","type":"phone","label":"A","versionCode":3,"apkUrl":"/api/apps/a-phone/apk",
             "versions":[{"versionCode":2,"versionName":"1.1","notes":"n","size":7,"updatedAt":"2026-10-01T10:00:00Z",
