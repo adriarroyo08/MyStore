@@ -30,6 +30,9 @@ var (
 
 const maxShots = 8
 
+// Dispositivos que se recuerdan: el registro es público y no puede crecer sin límite.
+const maxDevices = 100
+
 // Versiones anteriores que se guardan por app (las APKs pueden pesar más de 1 GB).
 var maxVersions = 3
 
@@ -107,6 +110,7 @@ func NewStore(dir string) (*Store, error) {
 	}
 	if data, err := os.ReadFile(filepath.Join(dir, "devices.json")); err == nil {
 		json.Unmarshal(data, &s.devices) // si está corrupto se empieza de cero
+		s.trimDevices()
 	}
 	return s, nil
 }
@@ -127,6 +131,7 @@ func (s *Store) SeenDevice(device string) {
 		return
 	}
 	s.devices[device] = now
+	s.trimDevices()
 	if data, err := json.Marshal(s.devices); err == nil {
 		tmp := filepath.Join(s.root, "devices.json.tmp")
 		if os.WriteFile(tmp, data, 0o644) == nil {
@@ -146,6 +151,21 @@ func (s *Store) CountDownload(id string) {
 		if os.WriteFile(tmp, data, 0o644) == nil {
 			os.Rename(tmp, filepath.Join(s.root, "downloads.json"))
 		}
+	}
+}
+
+// trimDevices deja los maxDevices vistos más recientemente. Llamar con devMu tomado
+// (o antes de compartir el Store).
+func (s *Store) trimDevices() {
+	for len(s.devices) > maxDevices {
+		var oldest string
+		var t time.Time
+		for d, seen := range s.devices {
+			if oldest == "" || seen.Before(t) {
+				oldest, t = d, seen
+			}
+		}
+		delete(s.devices, oldest)
 	}
 }
 

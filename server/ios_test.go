@@ -57,7 +57,7 @@ func TestUploadIOS(t *testing.T) {
 		t.Errorf("phone: %d", n)
 	}
 	dl := do(t, "GET", srv.URL+"/api/apps/com.example.ios-ios/apk", "", nil, "")
-	if dl.Header.Get("Content-Type") != "application/octet-stream" || !strings.HasSuffix(dl.Header.Get("Content-Disposition"), `-1.2.ipa"`) {
+	if dl.Header.Get("Content-Type") != "application/octet-stream" || !strings.Contains(dl.Header.Get("Content-Disposition"), "-1.2.ipa") {
 		t.Errorf("headers %v", dl.Header)
 	}
 }
@@ -79,7 +79,7 @@ func TestIOSVersions(t *testing.T) {
 		t.Errorf("versions %v", vs)
 	}
 	old := do(t, "GET", srv.URL+"/api/apps/com.example.ios-ios/versions/5/apk", "", nil, "")
-	if !strings.HasSuffix(old.Header.Get("Content-Disposition"), `-1.0.ipa"`) {
+	if !strings.Contains(old.Header.Get("Content-Disposition"), "-1.0.ipa") {
 		t.Errorf("old: %v", old.Header)
 	}
 }

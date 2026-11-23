@@ -1,12 +1,15 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 )
 
 // fixture copia una APK de testdata a un temporal, porque Put mueve el fichero.
@@ -259,4 +262,38 @@ func sameFile(t *testing.T, path, fixtureName string) bool {
 	a, _ := os.ReadFile(path)
 	b, _ := os.ReadFile(filepath.Join("testdata", fixtureName))
 	return len(a) > 0 && string(a) == string(b)
+}
+// El registro de dispositivos es público: con el cupo lleno, el nuevo desplaza al visto hace más tiempo.
+func TestDevicesAreCapped(t *testing.T) {
+	s := newTestStore(t)
+	base := time.Now().UTC().Add(-time.Hour)
+	for i := range maxDevices {
+		s.devices[fmt.Sprintf("dev-%d", i)] = base.Add(time.Duration(i) * time.Second)
+	}
+	s.SeenDevice("nuevo")
+	got := map[string]bool{}
+	for _, d := range s.Devices() {
+		got[d.Device] = true
+	}
+	if len(got) != maxDevices || !got["nuevo"] || got["dev-0"] || !got["dev-1"] {
+		t.Fatalf("%d dispositivos, nuevo=%v dev-0=%v dev-1=%v", len(got), got["nuevo"], got["dev-0"], got["dev-1"])
+	}
+
+	// Un devices.json con más de la cuenta (versiones anteriores) se recorta al arrancar.
+	many := map[string]time.Time{}
+	for i := range maxDevices + 50 {
+		many[fmt.Sprintf("dev-%d", i)] = base.Add(time.Duration(i) * time.Second)
+	}
+	data, _ := json.Marshal(many)
+	if err := os.WriteFile(filepath.Join(s.root, "devices.json"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s2, err := NewStore(s.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ds := s2.Devices()
+	if len(ds) != maxDevices || ds[len(ds)-1].Device != "dev-50" {
+		t.Errorf("%d dispositivos tras recargar, el más viejo %q", len(ds), ds[len(ds)-1].Device)
+	}
 }
