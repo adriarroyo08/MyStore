@@ -558,5 +558,5 @@ func NewHandler(s *Store, token string, maxUploadBytes int64) http.Handler {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 
-	return mux
+	return securityHeaders(mux)
 }
