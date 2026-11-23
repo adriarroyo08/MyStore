@@ -9,7 +9,7 @@ Al preparar esta hoja de ruta no hay issues ni épicas abiertas en MyStore. Los 
 ## Noviembre de 2026: todas las apps publican desde CI
 
 - [ ] Comprobar la publicación de AhorrApp desde su CI, que ya está integrada, y usarla como referencia para las demás apps.
-- [ ] Integrar la publicación de las APKs de WorkStation para teléfono y Wear OS desde su CI, comprobando que ambas variantes conviven en MyStore.
+- [x] Integrar la publicación de las APKs de WorkStation para teléfono y Wear OS desde su CI, comprobando que ambas variantes conviven en MyStore.
 - [ ] Integrar la publicación de la APK de spritearena desde su CI.
 - [ ] Verificar para cada app una publicación y una actualización instalable, con firma coherente y código de versión creciente.
 - [ ] Documentar el flujo común de publicación con ejemplos genéricos y secretos de CI, sin datos del servidor del estudio.

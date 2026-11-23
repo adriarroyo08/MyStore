@@ -21,7 +21,7 @@ class StoreClient(val baseUrl: String, private val device: String? = null) {
     suspend fun apps(type: String, beta: Boolean = false): List<StoreApp> = withContext(Dispatchers.IO) {
         val body = get("$baseUrl/api/apps?type=$type", device).toString(Charsets.UTF_8)
         try {
-            parseApps(body, baseUrl, beta)
+            parseApps(body, baseUrl, beta, Build.VERSION.SDK_INT.takeIf { it > 0 } ?: Int.MAX_VALUE) // 0 en tests de JVM
         } catch (e: Exception) {
             throw StoreException("Respuesta inesperada de la tienda")
         }

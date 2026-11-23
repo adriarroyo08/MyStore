@@ -44,10 +44,11 @@ fun normalizeStoreUrl(input: String): String? {
 }
 
 // beta = el usuario quiere betas: la app se presenta con su versión beta y la estable pasa al historial
-fun parseApps(json: String, baseUrl: String, beta: Boolean = false): List<StoreApp> {
+// sdk = nivel de API del dispositivo: las apps que piden uno mayor no se muestran (no se podrían instalar)
+// ponytail: la beta se filtra con el minSdk de la estable; el servidor no publica el de la beta
+fun parseApps(json: String, baseUrl: String, beta: Boolean = false, sdk: Int = Int.MAX_VALUE): List<StoreApp> {
     val arr = JSONArray(json)
-    return (0 until arr.length()).map {
-        val o = arr.getJSONObject(it)
+    return (0 until arr.length()).map { arr.getJSONObject(it) }.filter { it.optInt("minSdk") <= sdk }.map { o ->
         val app = StoreApp(
             id = o.getString("id"), pkg = o.getString("package"), type = o.getString("type"),
             label = o.getString("label"), versionCode = o.getLong("versionCode"),

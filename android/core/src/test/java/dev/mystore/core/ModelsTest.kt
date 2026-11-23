@@ -79,6 +79,14 @@ class ModelsTest {
         assertEquals(listOf(2L, 7L), listOf(old.versionCode, old.size))
     }
 
+    @Test fun hidesAppsThatNeedANewerAndroid() {
+        val j = """[{"id":"a","package":"a","type":"watch","label":"A","versionCode":1,"minSdk":30},
+            {"id":"b","package":"b","type":"watch","label":"B","versionCode":1,"minSdk":34},
+            {"id":"c","package":"c","type":"watch","label":"C","versionCode":1}]"""
+        assertEquals(listOf("a", "c"), parseApps(j, "", sdk = 33).map { it.id })
+        assertEquals(3, parseApps(j, "").size)
+    }
+
     @Test fun betaReplacesStableOnlyWhenWanted() {
         val j = """[{"id":"a-phone","package":"a","type":"phone","label":"A","versionCode":3,"versionName":"1.2","notes":"estable",
             "size":9,"updatedAt":"2026-10-01T10:00:00Z","apkUrl":"/api/apps/a-phone/apk",
