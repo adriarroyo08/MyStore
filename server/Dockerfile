@@ -11,4 +11,6 @@ COPY --from=build /mystore /mystore
 ENV MYSTORE_DATA=/data
 VOLUME /data
 EXPOSE 8080
+# Sin curl en distroless: el propio binario pregunta a /healthz.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 CMD ["/mystore", "healthcheck"]
 ENTRYPOINT ["/mystore"]

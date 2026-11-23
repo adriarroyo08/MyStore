@@ -253,6 +253,7 @@ El token va en la cabecera `Authorization: Bearer <token>`. El `id` de una app e
 | Método | Ruta | Token | Descripción |
 |---|---|:---:|---|
 | `GET` | `/` | — | Web de administración |
+| `GET` | `/healthz` | — | `ok` si el servidor puede leer sus datos (lo usa el `HEALTHCHECK` de Docker) |
 | `GET` | `/api/apps?type=phone\|watch\|ios` | — | Lista de apps (con `iconUrl`, `apkUrl`, `screenshots`) |
 | `GET` | `/api/apps/{id}/icon` | — | Icono PNG (genérico si no hay) |
 | `GET` | `/api/apps/{id}/apk` | — | Descarga la APK |
