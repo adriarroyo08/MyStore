@@ -17,6 +17,10 @@ inputs:
     description: Notas de la versión
     required: false
     default: ""
+  channel:
+    description: Canal de publicación, stable o beta (la beta no sustituye a la versión estable)
+    required: false
+    default: stable
   keystore-base64:
     description: Keystore en base64 para refirmar la APK antes de subirla (la tienda exige la misma firma que la versión publicada). Vacío = se sube tal cual
     required: false
@@ -42,6 +46,7 @@ runs:
         TOKEN: ${{ inputs.token }}
         APK: ${{ inputs.apk }}
         NOTES: ${{ inputs.notes }}
+        CHANNEL: ${{ inputs.channel }}
         KS_B64: ${{ inputs.keystore-base64 }}
         KS_PASS: ${{ inputs.keystore-password }}
         KS_ALIAS: ${{ inputs.key-alias }}
@@ -67,7 +72,7 @@ runs:
         echo "Subiendo ${files[0]} a ${STORE_URL%/}"
         curl --silent --show-error --fail-with-body \
           -H "Authorization: Bearer $TOKEN" \
-          -F "apk=@$apk" \
+          -F "apk=@$apk"           -F "channel=$CHANNEL" \
           -F "notes=<-" \
           "${STORE_URL%/}/api/apps" <<< "$NOTES"
         echo

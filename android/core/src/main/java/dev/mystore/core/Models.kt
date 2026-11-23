@@ -43,11 +43,12 @@ fun normalizeStoreUrl(input: String): String? {
     return withScheme.trimEnd('/')
 }
 
-fun parseApps(json: String, baseUrl: String): List<StoreApp> {
+// beta = el usuario quiere betas: la app se presenta con su versión beta y la estable pasa al historial
+fun parseApps(json: String, baseUrl: String, beta: Boolean = false): List<StoreApp> {
     val arr = JSONArray(json)
     return (0 until arr.length()).map {
         val o = arr.getJSONObject(it)
-        StoreApp(
+        val app = StoreApp(
             id = o.getString("id"), pkg = o.getString("package"), type = o.getString("type"),
             label = o.getString("label"), versionCode = o.getLong("versionCode"),
             versionName = o.optString("versionName"), size = o.optLong("size"),
@@ -64,6 +65,14 @@ fun parseApps(json: String, baseUrl: String): List<StoreApp> {
                     )
                 }
             }.orEmpty(),
+        )
+        val b = if (beta) o.optJSONObject("beta") else null
+        if (b == null) app else app.copy(
+            versionCode = b.getLong("versionCode"),
+            versionName = b.optString("versionName").let { n -> if ("beta" in n.lowercase()) n else "$n beta" },
+            notes = b.optString("notes"), size = b.optLong("size"), updatedAt = b.optString("updatedAt"),
+            apkUrl = baseUrl + b.optString("apkUrl"),
+            versions = listOf(StoreVersion(app.versionCode, app.versionName, app.notes, app.size, app.updatedAt, app.apkUrl)) + app.versions,
         )
     }
 }

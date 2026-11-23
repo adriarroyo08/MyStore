@@ -58,6 +58,11 @@ open class StoreViewModel(app: Application, private val type: String, private va
 
     fun changeAutoUpdate(on: Boolean) { settings.autoUpdate = on; autoUpdate = on }
 
+    var beta by mutableStateOf(settings.beta)
+        private set
+
+    fun changeBeta(on: Boolean) { settings.beta = on; beta = on; load() }
+
     init {
         viewModelScope.launch {
             combine(installer.states, installer.ticks) { s, _ -> s }.collect {
@@ -77,7 +82,7 @@ open class StoreViewModel(app: Application, private val type: String, private va
         viewModelScope.launch {
             loading = true
             try {
-                apps = c.apps(type)
+                apps = c.apps(type, beta)
                 clearShots()
                 error = null
                 refreshInstalled()
@@ -95,7 +100,7 @@ open class StoreViewModel(app: Application, private val type: String, private va
         val url = normalizeStoreUrl(input) ?: return "Escribe una URL válida (http:// o https://)"
         val c = StoreClient(url, device)
         return try {
-            apps = c.apps(type)
+            apps = c.apps(type, beta)
             settings.storeUrl = url
             client = c
             icons.clear()

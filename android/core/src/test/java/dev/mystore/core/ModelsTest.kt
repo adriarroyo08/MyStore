@@ -78,4 +78,18 @@ class ModelsTest {
         assertEquals(listOf("a-phone", "a", "1.1", "http://h/api/apps/a-phone/versions/2/apk"), listOf(old.id, old.pkg, old.versionName, old.apkUrl))
         assertEquals(listOf(2L, 7L), listOf(old.versionCode, old.size))
     }
+
+    @Test fun betaReplacesStableOnlyWhenWanted() {
+        val j = """[{"id":"a-phone","package":"a","type":"phone","label":"A","versionCode":3,"versionName":"1.2","notes":"estable",
+            "size":9,"updatedAt":"2026-10-01T10:00:00Z","apkUrl":"/api/apps/a-phone/apk",
+            "beta":{"versionCode":4,"versionName":"1.3","notes":"prueba","size":10,"updatedAt":"2026-11-01T10:00:00Z",
+            "apkUrl":"/api/apps/a-phone/beta/apk"}}]"""
+        val stable = parseApps(j, "http://h").single()
+        assertEquals(listOf(3L, "1.2", "http://h/api/apps/a-phone/apk"), listOf(stable.versionCode, stable.versionName, stable.apkUrl))
+        val beta = parseApps(j, "http://h", beta = true).single()
+        assertEquals(listOf(4L, "1.3 beta", "prueba", 10L, "http://h/api/apps/a-phone/beta/apk"),
+            listOf(beta.versionCode, beta.versionName, beta.notes, beta.size, beta.apkUrl))
+        // la estable queda en el historial para poder volver a ella
+        assertEquals(StoreVersion(3, "1.2", "estable", 9, "2026-10-01T10:00:00Z", "http://h/api/apps/a-phone/apk"), beta.versions.single())
+    }
 }

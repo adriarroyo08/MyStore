@@ -12,4 +12,9 @@ class StoreSettings(context: Context) {
     var autoUpdate: Boolean
         get() = prefs.getBoolean("autoUpdate", true)
         set(v) = prefs.edit().putBoolean("autoUpdate", v).apply()
+
+    // Recibir las versiones beta de las apps que las tengan
+    var beta: Boolean
+        get() = prefs.getBoolean("beta", false)
+        set(v) = prefs.edit().putBoolean("beta", v).apply()
 }

@@ -54,6 +54,7 @@ type appJSON struct {
 	APKURL      string        `json:"apkUrl"`
 	Screenshots []string      `json:"screenshots"`
 	Versions    []versionJSON `json:"versions"`
+	Beta        *versionJSON  `json:"beta,omitempty"`
 }
 
 func withURLs(a App) appJSON {
@@ -65,7 +66,11 @@ func withURLs(a App) appJSON {
 	for i, v := range a.Versions {
 		vs[i] = versionJSON{v, fmt.Sprintf("/api/apps/%s/versions/%d/apk", a.ID, v.VersionCode)}
 	}
-	return appJSON{App: a, IconURL: "/api/apps/" + a.ID + "/icon", APKURL: "/api/apps/" + a.ID + "/apk", Screenshots: shots, Versions: vs}
+	out := appJSON{App: a, IconURL: "/api/apps/" + a.ID + "/icon", APKURL: "/api/apps/" + a.ID + "/apk", Screenshots: shots, Versions: vs}
+	if a.Beta != nil {
+		out.Beta = &versionJSON{*a.Beta, "/api/apps/" + a.ID + "/beta/apk"}
+	}
+	return out
 }
 
 // baseURL es la URL pública del servidor; detrás de un proxy (Cloudflare Tunnel) manda X-Forwarded-*.
@@ -249,6 +254,39 @@ func NewHandler(s *Store, token string, maxUploadBytes int64) http.Handler {
 		serveAPK(w, r, path, a, v.VersionName, v.UpdatedAt)
 	})
 
+	mux.HandleFunc("GET /api/apps/{id}/beta/apk", func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		a, err := s.Get(id)
+		if err != nil {
+			storeError(w, err)
+			return
+		}
+		v, path, err := s.BetaAPKPath(id)
+		if err != nil {
+			storeError(w, err)
+			return
+		}
+		serveAPK(w, r, path, a, v.VersionName, v.UpdatedAt)
+	})
+
+	mux.HandleFunc("POST /api/apps/{id}/beta/promote", auth(func(w http.ResponseWriter, r *http.Request) {
+		a, err := s.PromoteBeta(r.PathValue("id"))
+		if err != nil {
+			storeError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, withURLs(a))
+	}))
+
+	mux.HandleFunc("DELETE /api/apps/{id}/beta", auth(func(w http.ResponseWriter, r *http.Request) {
+		a, err := s.DeleteBeta(r.PathValue("id"))
+		if err != nil {
+			storeError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, withURLs(a))
+	}))
+
 	mux.HandleFunc("GET /api/apps/{id}/manifest.plist", func(w http.ResponseWriter, r *http.Request) {
 		a, err := s.Get(r.PathValue("id"))
 		if err == nil && a.Type != "ios" {
@@ -324,7 +362,7 @@ func NewHandler(s *Store, token string, maxUploadBytes int64) http.Handler {
 		defer os.Remove(tmp.Name()) // no-op si Put ya lo movió
 		defer tmp.Close()
 
-		var notes, description string
+		var notes, description, channel string
 		gotAPK := false
 		for {
 			part, err := mr.NextPart()
@@ -336,13 +374,16 @@ func NewHandler(s *Store, token string, maxUploadBytes int64) http.Handler {
 				case "apk":
 					_, err = io.Copy(tmp, part)
 					gotAPK = true
-				case "notes", "description":
+				case "notes", "description", "channel":
 					var b []byte
 					b, err = io.ReadAll(io.LimitReader(part, 64<<10))
-					if part.FormName() == "notes" {
-						notes = strings.TrimSpace(string(b))
-					} else {
-						description = strings.TrimSpace(string(b))
+					switch v := strings.TrimSpace(string(b)); part.FormName() {
+					case "notes":
+						notes = v
+					case "description":
+						description = v
+					default:
+						channel = v
 					}
 				}
 			}
@@ -364,7 +405,16 @@ func NewHandler(s *Store, token string, maxUploadBytes int64) http.Handler {
 			storeError(w, err)
 			return
 		}
-		a, err := s.Put(tmp.Name(), notes, description)
+		var a App
+		switch channel {
+		case "", "stable":
+			a, err = s.Put(tmp.Name(), notes, description)
+		case "beta":
+			a, err = s.PutBeta(tmp.Name(), notes)
+		default:
+			writeError(w, http.StatusBadRequest, "canal desconocido: usa stable o beta")
+			return
+		}
 		if err != nil {
 			storeError(w, err)
 			return

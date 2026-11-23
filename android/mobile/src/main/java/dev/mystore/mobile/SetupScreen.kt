@@ -175,6 +175,18 @@ fun SettingsScreen(vm: StoreViewModel) {
                     Spacer(Modifier.width(12.dp))
                     Switch(vm.autoUpdate, vm::changeAutoUpdate)
                 }
+                Spacer(Modifier.height(12.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Recibir betas", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "Versiones de prueba de las apps que las tengan. Pueden fallar; puedes volver a la estable desde la ficha de la app.",
+                            style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant,
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Switch(vm.beta, vm::changeBeta)
+                }
             }
             Group("Almacenamiento") {
                 // Se relee al borrar: installed cambia con installer.ticks

@@ -212,6 +212,7 @@ Consulta [cómo publicar una versión de la acción](docs/publicar-accion.md).
 | `token` | ✅ | Token de administrador (como secreto) |
 | `apk` | ✅ | Ruta de la APK; admite un glob que coincida con **un solo** fichero |
 | `notes` | — | Notas de la versión |
+| `channel` | `stable` | `beta` publica una versión de prueba sin sustituir la estable |
 
 </details>
 
@@ -241,7 +242,10 @@ El token va en la cabecera `Authorization: Bearer <token>`. El `id` de una app e
 | `GET` | `/api/apps/{id}/manifest.plist` | — | Manifiesto para instalar una app iOS desde Safari (`itms-services`) |
 | `GET` | `/api/altstore.json` | — | Fuente para SideStore / AltStore con las apps iOS |
 | `GET` | `/api/apps/{id}/screenshots/{n}` | — | Captura número `n` (desde 1) |
-| `POST` | `/api/apps` | 🔑 | Sube o actualiza (multipart: `apk`, `notes`, `description`) |
+| `POST` | `/api/apps` | 🔑 | Sube o actualiza (multipart: `apk`, `notes`, `description`, `channel` = `stable` o `beta`) |
+| `GET` | `/api/apps/{id}/beta/apk` | | Descarga la versión beta |
+| `POST` | `/api/apps/{id}/beta/promote` | 🔑 | Publica la beta como versión estable |
+| `DELETE` | `/api/apps/{id}/beta` | 🔑 | Retira la beta |
 | `PATCH` | `/api/apps/{id}` | 🔑 | Edita textos (JSON: `description`, `notes`) |
 | `DELETE` | `/api/apps/{id}` | 🔑 | Borra la app |
 | `POST` | `/api/apps/{id}/screenshots` | 🔑 | Añade una captura (campo `image`, PNG/JPEG, máx. 5 MB, hasta 8) |

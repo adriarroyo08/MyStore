@@ -52,6 +52,7 @@ type App struct {
 	CustomIcon  bool      `json:"customIcon"` // icon.png lo subió el admin, no viene de la APK
 	Shots       []string  `json:"shots"` // nombres de fichero en shots/, en orden de subida
 	Versions    []Version `json:"versions"` // anteriores, de la más nueva a la más vieja
+	Beta        *Version  `json:"beta,omitempty"` // versión de prueba más nueva que la estable; su APK es beta.apk
 	UpdatedAt   time.Time `json:"updatedAt"`
 }
 
@@ -235,6 +236,9 @@ func (s *Store) Put(tmpAPK, notes, description string) (App, error) {
 		prev := Version{old.VersionCode, old.VersionName, old.Notes, old.Size, old.UpdatedAt}
 		a.Versions = append([]Version{prev}, old.Versions...)
 		a.Versions = a.Versions[:min(len(a.Versions), maxVersions)]
+		if old.Beta != nil && old.Beta.VersionCode > meta.VersionCode { // la beta sigue por delante
+			a.Beta = old.Beta
+		}
 		if icon == nil && old.CustomIcon { // la APK nueva no trae icono: se conserva el personalizado
 			a.HasIcon, a.CustomIcon = true, true
 		}
@@ -285,10 +289,101 @@ func (s *Store) Put(tmpAPK, notes, description string) (App, error) {
 			}
 		}
 	}
+	if a.Beta != nil {
+		if err := linkFile(filepath.Join(dest, "beta.apk"), filepath.Join(tmp, "beta.apk")); err != nil {
+			return App{}, err
+		}
+	}
 	if err := writeMeta(tmp, a); err != nil {
 		return App{}, err
 	}
 	return a, replaceDir(tmp, dest)
+}
+
+// PutBeta guarda la APK como versión beta de una app que ya tiene versión estable.
+// La estable no cambia; quien quiera betas descarga beta.apk.
+// ponytail: la beta hereda minSdk/permisos de la estable en el catálogo; guardar su Meta entero si llegan a diferir.
+func (s *Store) PutBeta(tmpAPK, notes string) (App, error) {
+	parse := ParseAPK
+	if isIPA(tmpAPK) {
+		parse = ParseIPA
+	}
+	meta, _, err := parse(tmpAPK)
+	if err != nil {
+		return App{}, err
+	}
+	id := meta.Package + "-" + meta.Type
+	dest, err := s.dir(id)
+	if err != nil {
+		return App{}, fmt.Errorf("%w: nombre de paquete no admitido", ErrInvalidAPK)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	a, err := s.Get(id)
+	if err != nil {
+		return App{}, err
+	}
+	newest := a.VersionCode
+	if a.Beta != nil {
+		newest = max(newest, a.Beta.VersionCode)
+	}
+	if meta.VersionCode <= newest {
+		return App{}, fmt.Errorf("%w (código %d)", ErrNotNewer, newest)
+	}
+	if meta.Type != "ios" && meta.CertSHA256 != a.CertSHA256 {
+		return App{}, ErrCertMismatch
+	}
+	if err := moveFile(tmpAPK, filepath.Join(dest, "beta.apk")); err != nil {
+		return App{}, err
+	}
+	a.Beta = &Version{meta.VersionCode, meta.VersionName, notes, meta.Size, time.Now().UTC()}
+	return a, writeMeta(dest, a)
+}
+
+// DeleteBeta retira la versión beta.
+func (s *Store) DeleteBeta(id string) (App, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	a, err := s.Get(id)
+	if err != nil {
+		return App{}, err
+	}
+	if a.Beta == nil {
+		return App{}, ErrNotFound
+	}
+	a.Beta = nil
+	d, _ := s.dir(id)
+	if err := writeMeta(d, a); err != nil {
+		return App{}, err
+	}
+	return a, os.Remove(filepath.Join(d, "beta.apk"))
+}
+
+// PromoteBeta publica la beta como versión estable.
+func (s *Store) PromoteBeta(id string) (App, error) {
+	b, path, err := s.BetaAPKPath(id)
+	if err != nil {
+		return App{}, err
+	}
+	tmp := filepath.Join(s.apps, fmt.Sprintf(".promote-%d%s", time.Now().UnixNano(), filepath.Ext(path)))
+	if err := linkFile(path, tmp); err != nil { // enlace: Put mueve el fichero y la beta debe seguir si Put falla
+		return App{}, err
+	}
+	defer os.Remove(tmp)
+	return s.Put(tmp, b.Notes, "")
+}
+
+// BetaAPKPath devuelve la versión beta y la ruta de su APK.
+func (s *Store) BetaAPKPath(id string) (Version, string, error) {
+	a, err := s.Get(id)
+	if err != nil {
+		return Version{}, "", err
+	}
+	if a.Beta == nil {
+		return Version{}, "", ErrNotFound
+	}
+	d, _ := s.dir(id)
+	return *a.Beta, filepath.Join(d, "beta.apk"), nil
 }
 
 func (s *Store) Update(id string, description, notes, category *string) (App, error) {

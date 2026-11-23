@@ -530,3 +530,55 @@ func TestDevicesAndStats(t *testing.T) {
 		t.Errorf("reloaded = %v", s2.Devices())
 	}
 }
+
+func uploadBeta(t *testing.T, srv *httptest.Server, fixtureName string) *http.Response {
+	t.Helper()
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	w.WriteField("channel", "beta")
+	w.WriteField("notes", "notas beta")
+	fw, _ := w.CreateFormFile("apk", fixtureName)
+	data, _ := os.ReadFile(filepath.Join("testdata", fixtureName))
+	fw.Write(data)
+	w.Close()
+	return do(t, "POST", srv.URL+"/api/apps", testToken, &buf, w.FormDataContentType())
+}
+
+func TestBetaAPI(t *testing.T) {
+	srv, _ := newTestServer(t, 1<<20)
+	const app = "/api/apps/com.example.demo-phone"
+	upload(t, srv, testToken, "phone-v1.apk")
+	if res := uploadBeta(t, srv, "phone-v2.apk"); res.StatusCode != 201 {
+		t.Fatalf("beta: %d %s", res.StatusCode, errorMessage(t, res))
+	}
+	a := listApps(t, srv, "")[0]
+	b, _ := a["beta"].(map[string]any)
+	if a["versionCode"] != float64(1) || b["versionCode"] != float64(2) || b["notes"] != "notas beta" || b["apkUrl"] != app+"/beta/apk" {
+		t.Fatalf("app = %v", a)
+	}
+	res := do(t, "GET", srv.URL+app+"/beta/apk", "", nil, "")
+	got, _ := io.ReadAll(res.Body)
+	want, _ := os.ReadFile("testdata/phone-v2.apk")
+	if res.StatusCode != 200 || !bytes.Equal(got, want) {
+		t.Fatalf("beta apk: %d, %d bytes", res.StatusCode, len(got))
+	}
+	for _, p := range []string{"/beta", "/beta/promote"} { // sin token no se toca
+		m := map[string]string{"/beta": "DELETE", "/beta/promote": "POST"}[p]
+		if res := do(t, m, srv.URL+app+p, "", nil, ""); res.StatusCode != 401 {
+			t.Errorf("%s %s sin token: %d", m, p, res.StatusCode)
+		}
+	}
+	if res := do(t, "POST", srv.URL+app+"/beta/promote", testToken, nil, ""); res.StatusCode != 200 {
+		t.Fatalf("promote: %d", res.StatusCode)
+	}
+	a = listApps(t, srv, "")[0]
+	if a["versionCode"] != float64(2) || a["beta"] != nil {
+		t.Fatalf("tras promote: %v", a)
+	}
+	if res := do(t, "DELETE", srv.URL+app+"/beta", testToken, nil, ""); res.StatusCode != 404 {
+		t.Errorf("delete sin beta: %d", res.StatusCode)
+	}
+	if res := do(t, "GET", srv.URL+app+"/beta/apk", "", nil, ""); res.StatusCode != 404 {
+		t.Errorf("beta apk sin beta: %d", res.StatusCode)
+	}
+}

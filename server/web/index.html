@@ -67,6 +67,7 @@
   <div class="card">
     <label for="notes">Notas de la versión (opcional)</label>
     <textarea id="notes" placeholder="Qué hay de nuevo"></textarea>
+    <label><input id="beta" type="checkbox"> Subir como beta (no sustituye a la versión estable)</label>
     <div id="drop" tabindex="0" role="button">Arrastra aquí tus APKs o IPAs (iOS) o haz clic para elegirlas</div>
     <input id="file" type="file" accept=".apk,.ipa" multiple hidden>
     <div id="uploads"></div>
@@ -138,6 +139,7 @@ function upload(file) {
   const form = new FormData();
   form.append("apk", file);
   form.append("notes", $("notes").value);
+  if ($("beta").checked) form.append("channel", "beta");
   const xhr = new XMLHttpRequest();
   xhr.open("POST", "/api/apps");
   xhr.setRequestHeader("Authorization", auth().Authorization);
@@ -206,7 +208,8 @@ function appRow(a) {
     el("div", { className: "meta" },
       el("strong", { textContent: a.label }),
       el("span", { className: "tag", textContent: typeName[a.type] || a.type }),
-      el("small", { textContent: `${a.package} · v${a.versionName} (${a.versionCode}) · ${sizeMB(a.size)} · ${date}` })),
+      el("small", { textContent: `${a.package} · v${a.versionName} (${a.versionCode}) · ${sizeMB(a.size)} · ${date}` }),
+      ...(a.beta ? [el("small", {}, `Beta v${a.beta.versionName} (${a.beta.versionCode}) · `, el("a", { href: a.beta.apkUrl, textContent: "descargar" }))] : [])),
     el("div", { className: "actions" },
       ...(a.type === "ios" ? [el("a", { className: isIOS ? "btn big" : "btn", textContent: "Instalar en iPhone",
         href: "itms-services://?action=download-manifest&url=" + encodeURIComponent(location.origin + `/api/apps/${a.id}/manifest.plist`) })] : []),
@@ -231,6 +234,15 @@ function appRow(a) {
         } }));
       return line;
     }));
+    const betaAct = (label, method, path, ask) => el("button", { className: "secondary", textContent: label, onclick: async () => {
+      if (!confirm(ask)) return;
+      const res = await fetch(`/api/apps/${a.id}/beta${path}`, { method, headers: auth() });
+      if (res.ok) loadApps(); else { status.className = "msg err"; status.textContent = await apiError(res); }
+    } });
+    const betaBox = a.beta ? [el("label", {}, "Beta"), el("div", { className: "ver" },
+      el("span", { textContent: `v${a.beta.versionName} (${a.beta.versionCode}) · ${new Date(a.beta.updatedAt).toLocaleDateString()} · ${sizeMB(a.beta.size)}` }),
+      betaAct("Publicar como estable", "POST", "/promote", `¿Publicar la beta ${a.beta.versionName} para todos?`),
+      betaAct("Retirar", "DELETE", "", `¿Retirar la beta ${a.beta.versionName}?`))] : [];
     const shotsBox = el("div", { className: "shots" });
     const shotMsg = el("div", { className: "msg" });
     const shotFile = el("input", { type: "file", accept: "image/png,image/jpeg,image/webp", multiple: true, hidden: true });
@@ -276,7 +288,7 @@ function appRow(a) {
       } catch { iconMsg.className = "msg err"; iconMsg.textContent = "error de red"; }
     };
     showShots(a.screenshots || []);
-    editor = el("div", { className: "edit" }, desc, notes, el("label", {}, "Categoría"), cat,
+    editor = el("div", { className: "edit" }, desc, notes, el("label", {}, "Categoría"), cat, ...betaBox,
       ...(a.versions && a.versions.length ? [el("label", {}, "Versiones anteriores"), versBox] : []),
       el("div", {}, "Cambiar icono: ", iconImg, " ", iconFile), iconMsg, shotsBox, shotDrop, shotFile, shotMsg,
       el("div", {}, el("button", { textContent: "Guardar", onclick: async () => {

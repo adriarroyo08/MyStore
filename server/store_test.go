@@ -202,3 +202,61 @@ func TestRecoversInterruptedReplace(t *testing.T) {
 		t.Errorf("app lost after restart: %+v %v", a, err)
 	}
 }
+
+func TestBetaChannel(t *testing.T) {
+	s := newTestStore(t)
+	if _, err := s.PutBeta(fixture(t, "phone-v2.apk"), "beta"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("beta sin estable: %v", err)
+	}
+	mustPut(t, s, "phone-v1.apk", "estable", "")
+	if _, err := s.PutBeta(fixture(t, "phone-v1.apk"), ""); !errors.Is(err, ErrNotNewer) {
+		t.Fatalf("beta no más nueva: %v", err)
+	}
+	if _, err := s.PutBeta(fixture(t, "phone-v2-otherkey.apk"), ""); !errors.Is(err, ErrCertMismatch) {
+		t.Fatalf("beta con otra clave: %v", err)
+	}
+	a, err := s.PutBeta(fixture(t, "phone-v2.apk"), "probando")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.VersionCode != 1 || a.Beta == nil || a.Beta.VersionCode != 2 || a.Beta.Notes != "probando" {
+		t.Fatalf("app = %+v beta = %+v", a, a.Beta)
+	}
+	if _, path, err := s.BetaAPKPath(a.ID); err != nil || !sameFile(t, path, "phone-v2.apk") {
+		t.Fatalf("beta apk: %v", err)
+	}
+	// se publica como estable: la beta desaparece y la v1 pasa al historial
+	a, err = s.PromoteBeta(a.ID)
+	if err != nil || a.VersionCode != 2 || a.Beta != nil || a.Notes != "probando" || len(a.Versions) != 1 {
+		t.Fatalf("promote: %v %+v", err, a)
+	}
+	if _, _, err := s.BetaAPKPath(a.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("beta tras promote: %v", err)
+	}
+}
+
+func TestStableSupersedesBetaAndDeleteBeta(t *testing.T) {
+	s := newTestStore(t)
+	mustPut(t, s, "phone-v1.apk", "", "")
+	if _, err := s.PutBeta(fixture(t, "phone-v2.apk"), ""); err != nil {
+		t.Fatal(err)
+	}
+	a, err := s.DeleteBeta("com.example.demo-phone")
+	if err != nil || a.Beta != nil {
+		t.Fatalf("delete beta: %v %+v", err, a.Beta)
+	}
+	if _, err := s.DeleteBeta(a.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("delete beta dos veces: %v", err)
+	}
+	s.PutBeta(fixture(t, "phone-v2.apk"), "")
+	if a := mustPut(t, s, "phone-v2.apk", "", ""); a.Beta != nil { // la estable alcanza a la beta
+		t.Fatalf("beta sobrevive a una estable igual: %+v", a.Beta)
+	}
+}
+
+func sameFile(t *testing.T, path, fixtureName string) bool {
+	t.Helper()
+	a, _ := os.ReadFile(path)
+	b, _ := os.ReadFile(filepath.Join("testdata", fixtureName))
+	return len(a) > 0 && string(a) == string(b)
+}

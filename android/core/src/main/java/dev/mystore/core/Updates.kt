@@ -49,7 +49,7 @@ class UpdateWorker(private val ctx: Context, params: WorkerParameters) : Corouti
         try {
             val url = StoreSettings(ctx).storeUrl?.takeIf { it.isNotBlank() } ?: return Result.success()
             val type = inputData.getString("type") ?: "phone"
-            val apps = StoreClient(url, deviceName(ctx, type)).apps(type)
+            val apps = StoreClient(url, deviceName(ctx, type)).apps(type, StoreSettings(ctx).beta)
             val installer = Installer(ctx)
             installer.pruneCache(apps)
             var pending = pendingUpdates(apps, apps.associate { it.id to installer.installedVersion(it.pkg) })
@@ -101,7 +101,7 @@ class RemoteInstallWorker(private val ctx: Context, params: WorkerParameters) : 
         val type = inputData.getString("type") ?: "watch"
         val pkg = inputData.getString("pkg") ?: return Result.failure()
         return try {
-            val app = StoreClient(url, deviceName(ctx, type)).apps(type).find { it.pkg == pkg } ?: return Result.failure()
+            val app = StoreClient(url, deviceName(ctx, type)).apps(type, StoreSettings(ctx).beta).find { it.pkg == pkg } ?: return Result.failure()
             Installer(ctx).install(app, auto = true)
             Result.success()
         } catch (e: Exception) {

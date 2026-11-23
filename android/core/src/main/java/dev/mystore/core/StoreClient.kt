@@ -18,10 +18,10 @@ fun deviceName(context: Context, type: String): String {
 }
 
 class StoreClient(val baseUrl: String, private val device: String? = null) {
-    suspend fun apps(type: String): List<StoreApp> = withContext(Dispatchers.IO) {
+    suspend fun apps(type: String, beta: Boolean = false): List<StoreApp> = withContext(Dispatchers.IO) {
         val body = get("$baseUrl/api/apps?type=$type", device).toString(Charsets.UTF_8)
         try {
-            parseApps(body, baseUrl)
+            parseApps(body, baseUrl, beta)
         } catch (e: Exception) {
             throw StoreException("Respuesta inesperada de la tienda")
         }

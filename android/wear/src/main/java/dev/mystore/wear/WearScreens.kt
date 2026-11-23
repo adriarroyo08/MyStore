@@ -104,6 +104,15 @@ private fun SetupScreen(vm: StoreViewModel, onBack: (() -> Unit)?) {
             )
         }
         if (onBack != null) item {
+            ToggleChip(
+                checked = vm.beta, onCheckedChange = vm::changeBeta,
+                label = { Text("Recibir betas") },
+                secondaryLabel = { Text("Versiones de prueba") },
+                toggleControl = { Icon(ToggleChipDefaults.switchIcon(vm.beta), null) },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        if (onBack != null) item {
             val bytes = remember(vm.installed) { vm.installer.cacheBytes() }
             Chip(
                 onClick = { vm.installer.clearCache() }, enabled = bytes > 0,
